@@ -9,6 +9,7 @@
 <?!= include("ThemeBoot"); ?>
 </head>
 <body>
+<script>window.__FA_INITIAL_PAGE__ = <?!= JSON.stringify(typeof initialPage !== 'undefined' ? initialPage : '') ?>;</script>
 <?!= include("PartialsNav"); ?>
 <?!= include("PageHome"); ?>
 <?!= include("PartialsLgHeroPhoto"); ?>

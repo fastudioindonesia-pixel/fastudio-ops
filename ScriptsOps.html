@@ -5266,6 +5266,7 @@ initHeroSlider();
 restoreOpsSession();
 restoreClientPortalSession();
 updateAuthNavLabel();
+if (typeof applyLandingDeepLink_ === 'function') applyLandingDeepLink_();
 if (typeof google !== 'undefined' && google.script && google.script.run) {
   google.script.run.withFailureHandler(function() {}).warmup();
 }

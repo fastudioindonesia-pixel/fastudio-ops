@@ -16,7 +16,7 @@ var SENSITIVE_IDS_ = {
   DRIVE_FOLDER_ID: "",
   COMPANY_LOGO_FILE_ID: "",
   RECAPTCHA_SITE_KEY: "6LcPXY0tAAAAALGr5NimT0Oi4Dx5YyUl7ZaPHfT9",
-  RECAPTCHA_SECRET_KEY: ""
+  RECAPTCHA_SECRET_KEY: "6LcPXY0tAAAAANKstR1TnVkULlRCgTA94awyhyPP"
 };
 
 var CONFIG = {
@@ -582,10 +582,29 @@ function include(filename) {
 function doGet(e) {
   // Jangan buka Spreadsheet di sini — itu yang bikin first paint 5–15 detik.
   // Setup sheet tetap jalan saat login / operasi data.
-  var out = HtmlService
-    .createTemplateFromFile("Index")
+  // Query ?page=ops dari Vercel TIDAK masuk window.location di iframe HtmlService —
+  // harus di-inject dari e.parameter di sini.
+  var initialPage = "";
+  try {
+    initialPage = String((e && e.parameter && e.parameter.page) || "").trim().toLowerCase();
+  } catch (err) {
+    initialPage = "";
+  }
+  if (initialPage === "faq-contact") initialPage = "about";
+  if (initialPage === "booking" || initialPage === "login" || initialPage === "signin") {
+    initialPage = "ops";
+  }
+  var allowed = { home: 1, ops: 1, gallery: 1, about: 1, "reset-password": 1 };
+  if (!allowed[initialPage]) initialPage = "";
+
+  // Auth shell: skip marketing HTML/hero base64 supaya login jauh lebih cepat.
+  var useAuthShell = (initialPage === "ops" || initialPage === "reset-password");
+  var template = HtmlService.createTemplateFromFile(useAuthShell ? "IndexAuth" : "Index");
+  template.initialPage = initialPage || (useAuthShell ? "ops" : "");
+  template.publicSiteUrl = "https://www.fastudio.id";
+  var out = template
     .evaluate()
-    .setTitle("FA Studio Indonesia")
+    .setTitle(useAuthShell ? "Sign In — FA Studio Indonesia" : "FA Studio Indonesia")
     .addMetaTag("viewport", "width=device-width, initial-scale=1")
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   var faviconUrl = getAppFaviconUrl_();

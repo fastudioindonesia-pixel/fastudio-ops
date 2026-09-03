@@ -124,13 +124,45 @@ function gasAppUrl_(page) {
   return base + '?page=' + encodeURIComponent(page);
 }
 
+function warmGasApp_() {
+  var url = gasAppUrl_('ops');
+  if (!url) return;
+  try {
+    fetch(url, { mode: 'no-cors', credentials: 'omit', cache: 'no-store', keepalive: true });
+  } catch (e1) {}
+  try {
+    var img = new Image();
+    img.referrerPolicy = 'no-referrer';
+    img.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_warm=' + Date.now();
+  } catch (e2) {}
+}
+
+function showGasRedirectOverlay_() {
+  if (document.getElementById('fa-gas-redirect')) return;
+  var el = document.createElement('div');
+  el.id = 'fa-gas-redirect';
+  el.setAttribute('role', 'status');
+  el.innerHTML = '<div class="fa-gas-redirect-card"><div class="fa-gas-redirect-spin" aria-hidden="true"></div><strong>Membuka aplikasi…</strong><span>Menyiapkan halaman login FA Studio</span></div>';
+  var css = document.createElement('style');
+  css.textContent = '#fa-gas-redirect{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(248,248,246,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);font-family:"Plus Jakarta Sans",system-ui,sans-serif;color:#070707}'
+    + '.fa-gas-redirect-card{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:28px}'
+    + '.fa-gas-redirect-card strong{font-size:18px;letter-spacing:-.02em}'
+    + '.fa-gas-redirect-card span{font-size:13px;opacity:.62}'
+    + '.fa-gas-redirect-spin{width:28px;height:28px;border-radius:50%;border:2px solid rgba(7,7,7,.12);border-top-color:#070707;animation:faGasSpin .7s linear infinite}'
+    + '@keyframes faGasSpin{to{transform:rotate(360deg)}}';
+  document.head.appendChild(css);
+  document.body.appendChild(el);
+}
+
 function goToGasApp(page) {
   var url = gasAppUrl_(page || 'ops');
   if (!url) {
     alert('URL aplikasi belum di-set. Isi GAS_APP_URL di landing/config.js, lalu rebuild/deploy ulang.');
     return;
   }
-  window.location.href = url;
+  showGasRedirectOverlay_();
+  warmGasApp_();
+  window.setTimeout(function() { window.location.href = url; }, 40);
 }
 
 function goPublicHome() {
@@ -175,6 +207,12 @@ document.addEventListener('DOMContentLoaded', function() {
   if (typeof initLandingPage === 'function') initLandingPage();
   if (typeof updateLgNavActive_ === 'function') updateLgNavActive_('home');
   if (typeof updateLgFooterLinks_ === 'function') updateLgFooterLinks_('home');
+  warmGasApp_();
+  var cta = document.getElementById('lg-nav-cta');
+  if (cta) {
+    cta.addEventListener('pointerenter', warmGasApp_, { passive: true });
+    cta.addEventListener('focus', warmGasApp_, { passive: true });
+  }
 });
 """
 

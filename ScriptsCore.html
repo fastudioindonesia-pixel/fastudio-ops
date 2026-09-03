@@ -1847,6 +1847,14 @@ function applyPublicNavGate() {
 
 function goPublicHome() {
   if (isAuthenticatedSession()) return;
+  // Auth shell (Vercel → ?page=ops) tidak punya #home — balik ke landing publik.
+  if (window.__FA_AUTH_SHELL__ || !document.getElementById('home')) {
+    var url = String(window.PUBLIC_SITE_URL || 'https://www.fastudio.id').trim();
+    if (url) {
+      try { window.top.location.href = url; } catch (e) { window.location.href = url; }
+      return;
+    }
+  }
   setPage('home');
 }
 
@@ -1994,10 +2002,20 @@ function setView(v, skipLoad) {
 
 function readLandingDeepLinkPage_() {
   try {
+    // 1) Injected by doGet(e.parameter.page) — reliable inside HtmlService iframe
+    var injected = String(window.__FA_INITIAL_PAGE__ || '').trim().toLowerCase();
+    if (injected === 'faq-contact') injected = 'about';
+    if (injected === 'booking' || injected === 'login' || injected === 'signin') injected = 'ops';
+    if (injected === 'ops' || injected === 'gallery' || injected === 'about' || injected === 'reset-password' || injected === 'home') {
+      return injected;
+    }
+  } catch (e0) {}
+  try {
+    // 2) Fallback if somehow query is visible to the iframe
     var params = new URLSearchParams(window.location.search || '');
     var page = String(params.get('page') || '').trim().toLowerCase();
     if (page === 'faq-contact') page = 'about';
-    if (page === 'booking') page = 'ops';
+    if (page === 'booking' || page === 'login' || page === 'signin') page = 'ops';
     if (page === 'ops' || page === 'gallery' || page === 'about' || page === 'reset-password' || page === 'home') {
       return page;
     }
@@ -2005,12 +2023,45 @@ function readLandingDeepLinkPage_() {
   return '';
 }
 
-applyPublicNavGate();
-(function applyLandingDeepLink_() {
+/** Dipakai dari Vercel CTA (?page=ops) agar langsung ke login, bukan landing GAS. */
+function applyLandingDeepLink_() {
   var page = readLandingDeepLinkPage_();
-  if (!page || page === 'home') return;
-  window.setTimeout(function() {
-    if (typeof setPage === 'function') setPage(page);
-  }, 0);
+  if (!page || page === 'home') return false;
+  if (typeof setPage !== 'function') return false;
+  setPage(page);
+  return typeof getActivePageId === 'function' ? getActivePageId() === page : true;
+}
+
+applyPublicNavGate();
+(function bootLandingDeepLink_() {
+  var tries = 0;
+  function run() {
+    tries += 1;
+    var page = readLandingDeepLinkPage_();
+    if (!page || page === 'home') return;
+    var ok = applyLandingDeepLink_();
+    if (!ok && tries < 12) window.setTimeout(run, 40 * tries);
+  }
+  window.setTimeout(run, 0);
+  window.setTimeout(run, 120);
+  window.setTimeout(run, 400);
+  window.addEventListener('load', function() { window.setTimeout(run, 0); });
+  // 3) Extra fallback via Apps Script URL API (async)
+  try {
+    if (google && google.script && google.script.url && google.script.url.getLocation) {
+      google.script.url.getLocation(function(loc) {
+        var p = loc && loc.parameter && loc.parameter.page;
+        if (!p && loc && loc.parameters && loc.parameters.page) {
+          p = Array.isArray(loc.parameters.page) ? loc.parameters.page[0] : loc.parameters.page;
+        }
+        p = String(p || '').trim().toLowerCase();
+        if (p === 'booking' || p === 'login' || p === 'signin') p = 'ops';
+        if (p === 'ops' || p === 'gallery' || p === 'about' || p === 'reset-password') {
+          window.__FA_INITIAL_PAGE__ = p;
+          applyLandingDeepLink_();
+        }
+      });
+    }
+  } catch (e2) {}
 })();
 </script>

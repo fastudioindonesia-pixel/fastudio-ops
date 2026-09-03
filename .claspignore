@@ -1,0 +1,13 @@
+Index.local.html
+Index.monolith.html
+assets/**
+tools/**
+landing/**
+**/*.md
+**/*.mov
+**/*.mp4
+logo.b64
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.webp

@@ -1,0 +1,103 @@
+      <div class="ops-view active" id="view-analytics">
+        <section class="glass-card glass-light analytics-action-panel glass-enter" style="--enter-delay:.0s">
+          <div class="analytics-action-hdr">
+            <div>
+              <h3><span class="analytics-dot"></span>Perlu Aksi <span class="analytics-action-badge" id="an-action-badge">0 item</span></h3>
+              <p class="analytics-action-lead">Prioritas unblock untuk Direktur &amp; top management — klik item untuk langsung tindak lanjut.</p>
+            </div>
+          </div>
+          <div class="analytics-action-chips" id="an-action-chips"></div>
+          <div class="analytics-action-list" id="an-action-list"></div>
+        </section>
+
+        <div class="analytics-grid">
+          <article class="analytics-card an-kpi-card glass-enter" style="--accent:#28b9d8;--enter-delay:.08s">
+            <div class="analytics-card-head">
+              <div class="analytics-label">Pipeline Value</div>
+              <span class="analytics-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M2 10h20"/><path d="M6 14h4"/></svg>
+              </span>
+            </div>
+            <div class="analytics-card-body">
+              <div class="analytics-money" id="an-pipeline-value">Rp 0</div>
+              <div class="analytics-sub" id="an-pipeline-value-sub">Total kontrak Deal + In-Production.</div>
+            </div>
+            <div class="analytics-trend" id="an-pipeline-trend">Aktif di pipeline</div>
+          </article>
+          <article class="analytics-card an-kpi-card glass-enter" style="--accent:#4ade80;--enter-delay:.14s">
+            <div class="analytics-card-head">
+              <div class="analytics-label">Revenue Collected</div>
+              <span class="analytics-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              </span>
+            </div>
+            <div class="analytics-card-body">
+              <div class="analytics-money" id="an-revenue">Rp 0</div>
+              <div class="analytics-sub">Pembayaran tervalidasi (invoice).</div>
+            </div>
+            <div class="analytics-trend" id="an-revenue-trend">Terkumpul dari invoice</div>
+          </article>
+          <article class="analytics-card an-kpi-card glass-enter" style="--accent:#fbbf24;--enter-delay:.20s">
+            <div class="analytics-card-head">
+              <div class="analytics-label">Outstanding</div>
+              <span class="analytics-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v5"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/></svg>
+              </span>
+            </div>
+            <div class="analytics-card-body">
+              <div class="analytics-money" id="an-outstanding">Rp 0</div>
+              <div class="analytics-sub" id="an-outstanding-sub">Sisa piutang project aktif.</div>
+            </div>
+            <div class="analytics-trend" id="an-outstanding-trend">Perlu tindak lanjut</div>
+          </article>
+          <article class="analytics-card an-kpi-card glass-enter" style="--accent:#c084fc;--enter-delay:.26s">
+            <div class="analytics-card-head">
+              <div class="analytics-label">Conversion</div>
+              <span class="analytics-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M19 5L5 19"/><circle cx="7.5" cy="7.5" r="2.5"/><circle cx="16.5" cy="16.5" r="2.5"/></svg>
+              </span>
+            </div>
+            <div class="analytics-card-body">
+              <div class="analytics-value" id="an-conversion">0%</div>
+              <div class="analytics-sub" id="an-conversion-sub">Deal + active pipeline dari total leads.</div>
+            </div>
+            <div class="analytics-trend" id="an-conversion-trend">Target 80%</div>
+          </article>
+        </div>
+
+        <section class="cashflow-export-panel glass-dark glass-enter" style="--enter-delay:.30s">
+          <div class="cashflow-export-copy">
+            <span class="cashflow-export-ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+            </span>
+            <div>
+              <h3>Export Laporan Cashflow</h3>
+              <p>Download laporan keuangan ringkas dengan logo, summary, dan detail project.</p>
+            </div>
+          </div>
+          <button class="cashflow-download-btn" id="cashflow-export-btn" onclick="exportCashflowCsv()">Download</button>
+        </section>
+
+        <div class="analytics-charts">
+          <section class="ops-card analytics-chart-card glass-card glass-medium glass-enter" style="--enter-delay:.35s">
+            <div class="card-hdr"><h3>Pipeline Composition</h3></div>
+            <div id="an-donut-pipeline"></div>
+          </section>
+          <section class="ops-card analytics-chart-card glass-card glass-medium glass-enter" style="--enter-delay:.42s">
+            <div class="card-hdr"><h3>Payment Funnel</h3></div>
+            <div id="an-donut-payment"></div>
+          </section>
+        </div>
+
+        <div class="ops-card analytics-risk-panel glass-card glass-light glass-enter" style="--enter-delay:.42s">
+          <div class="card-hdr"><h3>Risiko &amp; Timeline</h3></div>
+          <div class="analytics-risk-list" id="an-risk-list"></div>
+        </div>
+
+        <div class="ops-card analytics-fin-panel glass-card glass-light glass-enter" style="--enter-delay:.42s">
+          <div class="card-hdr"><h3>Financial Overview</h3></div>
+          <div class="analytics-fin-grid" id="an-fin-grid"></div>
+          <div class="analytics-fin-bar-wrap" id="an-fin-bar"></div>
+        </div>
+        <p class="analytics-sync-foot" id="analytics-sync-info">Analytics mengikuti data terbaru dari Leads &amp; Payments.</p>
+      </div>

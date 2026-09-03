@@ -1,0 +1,26 @@
+<nav class="mobile-tabbar" aria-label="Navigasi utama">
+  <button type="button" class="mobile-tab active" data-page="home" onclick="setPage('home'); event.stopPropagation();">
+    <span class="mobile-tab-ico" aria-hidden="true">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M10.55 2.533a2.25 2.25 0 0 1 2.9 0l6.75 5.695c.508.427.8 1.056.8 1.72V19.75A2.25 2.25 0 0 1 18.75 22H15.5a1.5 1.5 0 0 1-1.5-1.5v-4.25a.75.75 0 0 0-.75-.75h-2.5a.75.75 0 0 0-.75.75V20.5A1.5 1.5 0 0 1 8.5 22H5.25A2.25 2.25 0 0 1 3 19.75V9.948c0-.664.292-1.293.8-1.72z"/></svg>
+    </span>
+    <span class="mobile-tab-label">Home</span>
+  </button>
+  <button type="button" class="mobile-tab" data-page="gallery" onclick="setPage('gallery'); event.stopPropagation();">
+    <span class="mobile-tab-ico" aria-hidden="true">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+    </span>
+    <span class="mobile-tab-label">Work</span>
+  </button>
+  <button type="button" class="mobile-tab" data-page="ops" onclick="setPage('ops'); event.stopPropagation();" id="mobile-tab-signin">
+    <span class="mobile-tab-ico" aria-hidden="true">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7.5" r="3.75"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/></svg>
+    </span>
+    <span class="mobile-tab-label" id="mobile-tab-signin-label">Sign In</span>
+  </button>
+  <button type="button" class="mobile-tab" data-page="about" onclick="setPage('about'); event.stopPropagation();">
+    <span class="mobile-tab-ico" aria-hidden="true">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="8.01"/><path d="M12 11.5v5"/></svg>
+    </span>
+    <span class="mobile-tab-label">About</span>
+  </button>
+</nav>

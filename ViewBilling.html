@@ -1,0 +1,92 @@
+      <div class="ops-view" id="view-doc-gen">
+        <div id="invoice-access-gate" class="ops-card pay-access-gate bi-access-gate" style="display:none">
+          <h3>Akses Tim Internal Diperlukan</h3>
+          <p>Fitur invoice & riwayat pembayaran hanya untuk Tim Internal FA Studio.</p>
+          <div class="fg" style="max-width:320px;margin:0 auto 16px">
+            <input type="email" class="fc" id="internal-key-input" placeholder="email internal"/>
+          </div>
+          <div class="fg" style="max-width:320px;margin:0 auto 16px">
+            <input type="password" class="fc" id="internal-password-input" placeholder="Password"/>
+          </div>
+          <button class="btn-p" onclick="unlockInternalPay()">Masuk</button>
+        </div>
+        <div id="invoice-dashboard" class="bi-layout" style="display:none">
+          <select id="pay-filter-status" class="bi-filter-hidden" aria-hidden="true" tabindex="-1" onchange="renderPaymentHistory()">
+            <option value="All">Semua Status</option>
+            <option value="UNPAID">Belum Payment</option>
+            <option value="PENDING_REVIEW">Menunggu Review</option>
+            <option value="REJECTED">Ditolak — Revisi</option>
+            <option value="PAYMENT AWAL">Payment Awal</option>
+            <option value="PAYMENT SETELAH SHOOTING">Payment Setelah Shooting</option>
+            <option value="LUNAS">Lunas</option>
+          </select>
+
+          <div id="bi-finance-banner" class="bi-finance-banner glass-enter" style="--enter-delay:0s"></div>
+
+          <div id="pay-stats-bar" class="bi-filter-strip glass-enter" style="--enter-delay:.10s"></div>
+
+          <div class="bi-toolbar glass-enter" style="--enter-delay:.18s">
+            <div class="bi-search">
+              <span class="bi-search-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              </span>
+              <input type="text" id="pay-search-input" placeholder="Cari client atau ID invoice..." oninput="renderPaymentHistory()"/>
+            </div>
+            <div class="bi-filter-chip" id="bi-filter-chip">
+              <span id="bi-filter-chip-label">Semua</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+            <div class="bi-sync-pill">
+              <span class="bi-sync-dot" aria-hidden="true"></span>
+              <span id="pay-sync-info">Sinkron —</span>
+            </div>
+            <button type="button" class="bi-sync-btn" id="pay-sync-btn" onclick="refreshPaymentHistory()">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 0-15.5-6.4"/><path d="M3 4v5h5"/><path d="M3 12a9 9 0 0 0 15.5 6.4"/><path d="M21 20v-5h-5"/></svg>
+              <span>Sync</span>
+            </button>
+          </div>
+
+          <div id="payments-body" class="bi-card-grid glass-enter" style="--enter-delay:.24s"></div>
+
+          <div class="bi-footer">
+            <p id="payments-count">—</p>
+          </div>
+
+          <!-- Modal Submit Pembayaran -->
+          <div class="pay-modal-overlay" id="pay-modal-overlay" onclick="closePaymentModal()">
+            <div class="pay-modal glass-enter" onclick="event.stopPropagation()">
+              <div class="pay-modal-header">
+                <div class="pay-modal-title-wrap">
+                  <span class="pay-modal-kicker">Billing</span>
+                  <h3>Submit Pembayaran</h3>
+                </div>
+                <button type="button" class="pay-modal-close" onclick="closePaymentModal()" aria-label="Tutup">&times;</button>
+              </div>
+              <div class="pay-modal-body">
+                <p class="pay-modal-lead">Upload bukti transfer yang sudah dicek Officer. Pengajuan masuk antrean Direktur — invoice &amp; email klien baru dikirim setelah di-approve.</p>
+                <div class="fg"><label>Pilih Client / Project</label><select class="fc" id="inv-project" onchange="syncInvoiceProjectBudget()"></select></div>
+                <div class="fg"><label>Total Harga Project (Rp)</label><input type="text" class="fc" id="inv-project-total" placeholder="10.000.000" inputmode="numeric" oninput="formatRupiahField(this)"/><div class="lead-ts">Otomatis terisi dari total kesepakatan booking jika sudah ada. Bisa disesuaikan bila perlu.</div></div>
+                <div class="fg"><label>Jumlah Pembayaran Kali Ini (Rp)</label><input type="text" class="fc" id="inv-amount" placeholder="1.500.000" inputmode="numeric" oninput="formatRupiahField(this)"/></div>
+                <div class="fg"><label>Status Payment (Journey)</label>
+                  <select class="fc" id="inv-payment-status" onchange="onInvoicePaymentStatusChange()">
+                    <option value="PAYMENT AWAL">Payment Awal</option>
+                    <option value="PAYMENT SETELAH SHOOTING">Payment Setelah Shooting</option>
+                    <option value="LUNAS">Lunas</option>
+                  </select>
+                  <div class="lead-ts" id="inv-payment-status-hint">Pilih tahap journey sesuai pembayaran yang sedang diinput. Otomatis menyesuaikan saat sisa = 0.</div>
+                </div>
+                <div class="invoice-preview" id="invoice-budget-preview">Pilih project dan isi total harga untuk melihat sisa pembayaran.</div>
+                <div class="fg"><label>Tanggal Transfer Client</label><input type="date" class="fc" id="inv-payment-date"/></div>
+                <div class="fg"><label>Metode Pembayaran</label>
+                  <select class="fc" id="inv-method">
+                    <option>Transfer BCA</option><option>Transfer Mandiri</option><option>Transfer BNI</option><option>QRIS</option><option>Lainnya</option>
+                  </select>
+                </div>
+                <div class="fg"><label>Lampiran Bukti Transfer (PDF/JPG/PNG, maks. 8MB)</label><input type="file" class="fc" id="inv-proof-file" accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg"/></div>
+                <div class="fg"><label>Catatan Internal (opsional)</label><textarea class="fc" id="inv-notes" placeholder="Catatan verifikasi..." rows="3"></textarea></div>
+                <button type="button" class="btn-p pay-modal-submit" id="pay-modal-submit-btn" onclick="generateInvoiceForClient()">Submit Pembayaran</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>

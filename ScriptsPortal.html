@@ -1,0 +1,1952 @@
+<script>
+function selectOperationAccess(mode) {
+  var login = document.getElementById('ops-login-panel');
+  var client = document.getElementById('ops-client-access-panel');
+  var gate = document.getElementById('ops-access-gate');
+  if (login) login.classList.toggle('active', mode !== 'client');
+  if (client) client.classList.toggle('active', mode === 'client');
+  if (gate) gate.classList.toggle('is-client-shell', mode === 'client');
+  if (mode !== 'client' && typeof syncAuthBrandLogos === 'function') syncAuthBrandLogos();
+  if (mode === 'client') {
+    showClientPortalDashboard(true);
+    if (typeof renderClientPortalHome === 'function') renderClientPortalHome();
+    else if (CLIENT_PORTAL_STATE.project) renderClientPortalDashboard(CLIENT_PORTAL_STATE.project);
+  }
+}
+
+function normalizeClientProjectId(value) {
+  var id = String(value || '').trim().replace(/\s+/g, '').toUpperCase();
+  if (!id) return '';
+  return id.charAt(0) === '#' ? id : '#'+id;
+}
+
+function setClientPortalStatus(message, ok) {
+  var el = document.getElementById('cp-status');
+  if (!el) return;
+  el.textContent = message || '';
+  el.className = 'client-portal-status ' + (ok ? 'ok' : 'warn');
+}
+
+function resetClientPortalOtpState() {
+  CLIENT_PORTAL_STATE.otpSent = false;
+  var otpEl = document.getElementById('cp-otp');
+  if (otpEl) otpEl.value = '';
+}
+
+function showClientPortalDashboard(showDashboard) {
+  var login = document.getElementById('cp-login-card');
+  var dashboard = document.getElementById('cp-dashboard-card');
+  if (login) login.style.display = showDashboard ? 'none' : '';
+  if (dashboard) dashboard.classList.toggle('show', !!showDashboard);
+}
+
+function sendClientPortalOtpRequest() {
+  var projectEl = document.getElementById('cp-project-id');
+  var emailEl = document.getElementById('cp-email');
+  if (!projectEl || !emailEl) return;
+  var projectId = normalizeClientProjectId(projectEl.value);
+  var email = String(emailEl.value || '').trim().toLowerCase();
+  if (!projectId || !email) {
+    setClientPortalStatus('Project ID dan email booking wajib diisi.', false);
+    return;
+  }
+  showLoading();
+  google.script.run
+    .withSuccessHandler(function(res) {
+      hideLoading();
+      if (res.success) {
+        CLIENT_PORTAL_STATE.otpSent = true;
+        setClientPortalStatus('OTP tracking dikirim ke '+email+'. Cek inbox atau spam.', true);
+        showToast('OTP Terkirim', 'Kode tracking dikirim ke email booking.');
+      } else {
+        setClientPortalStatus(res.error || 'OTP gagal dikirim.', false);
+      }
+    })
+    .withFailureHandler(function(err) {
+      hideLoading();
+      setClientPortalStatus(err.message, false);
+    })
+    .sendClientPortalOtp(projectId, email);
+}
+
+function verifyClientPortalOtpSubmit() {
+  var projectEl = document.getElementById('cp-project-id');
+  var emailEl = document.getElementById('cp-email');
+  var otpEl = document.getElementById('cp-otp');
+  if (!projectEl || !emailEl || !otpEl) return;
+  var projectId = normalizeClientProjectId(projectEl.value);
+  var email = String(emailEl.value || '').trim().toLowerCase();
+  var otp = String(otpEl.value || '').trim();
+  if (!projectId || !email || !otp) {
+    setClientPortalStatus('Project ID, email, dan OTP wajib diisi.', false);
+    return;
+  }
+  showLoading();
+  google.script.run
+    .withSuccessHandler(function(res) {
+      hideLoading();
+      if (res.success) {
+        CLIENT_PORTAL_STATE.email = email;
+        CLIENT_PORTAL_STATE.sessionToken = res.sessionToken || "";
+        loadClientPortalProject(res.project);
+        persistClientPortalSession();
+        setClientPortalStatus('Akses diterima. Data tracking berhasil dimuat.', true);
+        showToast('Portal Terbuka', 'Tracking project '+projectId+' berhasil dimuat.');
+      } else {
+        setClientPortalStatus(res.error || 'OTP tidak valid.', false);
+      }
+    })
+    .withFailureHandler(function(err) {
+      hideLoading();
+      setClientPortalStatus(err.message, false);
+    })
+    .verifyClientPortalOtp(projectId, email, otp);
+}
+
+function loadClientPortalProject(project) {
+  CLIENT_PORTAL_STATE.project = project || null;
+  showClientPortalDashboard(true);
+  if (typeof renderClientPortalHome === 'function') renderClientPortalHome();
+  else renderClientPortalDashboard(CLIENT_PORTAL_STATE.project);
+}
+
+function selectClientPortalProject(projectId) {
+  var projects = CLIENT_PORTAL_STATE.projects || [];
+  var found = null;
+  for (var i = 0; i < projects.length; i++) {
+    if (String(projects[i].projectId || '') === String(projectId || '')) {
+      found = projects[i];
+      break;
+    }
+  }
+  CLIENT_PORTAL_STATE.project = found || projects[0] || null;
+  renderClientPortalHome();
+}
+
+function getClientTimeGreeting() {
+  var hour = new Date().getHours();
+  if (hour < 11) return 'Selamat pagi';
+  if (hour < 15) return 'Selamat siang';
+  if (hour < 18) return 'Selamat sore';
+  return 'Selamat malam';
+}
+
+function getClientWhatsAppHref(name, projectId, brandName) {
+  var bits = ['Halo FA Studio, saya ' + String(name || 'client') + '.'];
+  var brand = String(brandName || '').trim();
+  var pid = String(projectId || '').trim();
+  if (brand && pid) {
+    bits.push('Mau follow-up dealing untuk project ' + brand + ' (' + pid + ').');
+  } else if (brand) {
+    bits.push('Mau follow-up dealing untuk project ' + brand + '.');
+  } else if (pid) {
+    bits.push('Mau follow-up dealing untuk project ' + pid + '.');
+  } else {
+    bits.push('Mau tanya soal booking project.');
+  }
+  return 'https://wa.me/6282174181369?text=' + encodeURIComponent(bits.join(' '));
+}
+
+function isClientNewLeadStatus(status) {
+  var s = String(status || '').trim();
+  return s === 'New Lead' || s === 'New Approach';
+}
+
+function getClientNextAction(project) {
+  if (!project) {
+    return 'Akun sudah aktif. Isi Booking Now, lalu project akan muncul di dashboard ini.';
+  }
+  var status = String(project.status || '');
+  var drive = project.driveGate || {};
+  if (project.driveUnlocked) return 'Folder Drive sudah terbuka. File project bisa diunduh dari tombol di bawah.';
+  if (drive.productionReady && !drive.paymentReady) return 'Produksi sudah 100%. Drive terbuka setelah payment Lunas.';
+  if (!drive.productionReady && drive.paymentReady) return 'Pembayaran sudah Lunas. Drive terbuka setelah produksi 100%.';
+  if (status === 'On Hold') return 'Project sedang On Hold. Hubungi tim FA jika perlu update.';
+  if (isClientNewLeadStatus(status)) {
+    return 'Booking sudah diterima. Officer FA Studio akan menghubungi untuk dealing — biasanya dalam 1×24 jam kerja.';
+  }
+  if (status === 'Done') return 'Project selesai. Drive terbuka setelah produksi 100% dan payment Lunas.';
+  return 'Pantau progress produksi dan sisa pembayaran di dashboard ini.';
+}
+
+/** Banner New Lead: booking masuk, menunggu dealing officer. */
+function buildClientNewLeadNoticeHtml(project) {
+  project = project || {};
+  if (!isClientNewLeadStatus(project.status)) return '';
+  var name = CLIENT_PORTAL_STATE.name || _opsInternalName || 'Client';
+  var brand = String(project.clientName || '').trim();
+  var waHref = getClientWhatsAppHref(name, project.projectId, brand);
+  var leadBits = brand
+    ? 'Project <strong>'+escapeHtml(brand)+'</strong> sudah tercatat. Officer FA Studio akan menghubungi via WhatsApp untuk dealing &amp; konfirmasi detail sebelum produksi dimulai.'
+    : 'Officer FA Studio akan menghubungi via WhatsApp untuk dealing &amp; konfirmasi detail project sebelum produksi dimulai.';
+  return ''
+    + '<section class="cp-wait-notice" role="status" aria-live="polite">'
+      + '<div class="cp-wait-head">'
+        + '<span class="cp-wait-pill">Menunggu dealing</span>'
+        + '<span class="cp-wait-eta">± 1×24 jam kerja</span>'
+      + '</div>'
+      + '<div class="cp-wait-copy">'
+        + '<h3 class="cp-wait-title">Booking kamu sudah kami terima</h3>'
+        + '<p class="cp-wait-lead">'+leadBits+'</p>'
+      + '</div>'
+      + '<ol class="cp-wait-steps" aria-label="Alur setelah booking">'
+        + '<li class="cp-wait-step is-done"><span class="cp-wait-step-dot" aria-hidden="true"></span><div><strong>Booking masuk</strong><em>Form &amp; harga kesepakatan sudah tercatat</em></div></li>'
+        + '<li class="cp-wait-step is-now"><span class="cp-wait-step-dot" aria-hidden="true"></span><div><strong>Dealing officer</strong><em>Tim FA follow-up &amp; finalisasi scope</em></div></li>'
+        + '<li class="cp-wait-step"><span class="cp-wait-step-dot" aria-hidden="true"></span><div><strong>Status Deal</strong><em>Progress produksi &amp; pembayaran aktif di sini</em></div></li>'
+      + '</ol>'
+      + '<div class="cp-wait-actions">'
+        + '<a class="cp-wait-wa" href="'+escapeHtml(waHref)+'" target="_blank" rel="noopener">Chat WhatsApp Officer</a>'
+        + '<p class="cp-wait-hint">Tidak perlu isi form lagi — tunggu kabar officer, atau chat untuk update.</p>'
+      + '</div>'
+    + '</section>';
+}
+
+function buildClientPortalShortcutsHtml(name) {
+  return '';
+}
+
+/** Hitung ulang status jadwal shooting di sisi client — tanpa request tambahan. */
+function getClientShootingCountdown(shooting) {
+  shooting = shooting || {};
+  if (shooting.released) {
+    return { label: 'Dilepas', tone: 'is-tone-released', phase: 'released', done: true };
+  }
+  var today = (typeof todayIsoLocal === 'function')
+    ? todayIsoLocal()
+    : (function() {
+        var d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      })();
+  var start = String(shooting.startDate || '');
+  var end = String(shooting.endDate || start);
+  if (!today || !start) return { label: 'Terjadwal', tone: 'is-tone-info', phase: 'upcoming', done: false };
+  if (today > end) return { label: 'Selesai', tone: 'is-tone-done', phase: 'done', done: true };
+  if (today >= start) return { label: 'Sedang berjalan', tone: 'is-tone-live', phase: 'live', done: false };
+  var startDate = (typeof parseIsoDateLocal === 'function') ? parseIsoDateLocal(start) : null;
+  var todayDate = (typeof parseIsoDateLocal === 'function') ? parseIsoDateLocal(today) : null;
+  if (!startDate || !todayDate) return { label: 'Terjadwal', tone: 'is-tone-info', phase: 'upcoming', done: false };
+  var diff = Math.round((startDate.getTime() - todayDate.getTime()) / 86400000);
+  return {
+    label: diff === 1 ? 'Besok' : 'H-' + diff,
+    tone: 'is-tone-info',
+    phase: 'upcoming',
+    done: false,
+    daysUntil: diff
+  };
+}
+
+function getClientShootingPhase(project) {
+  var shooting = (project && project.shooting) || {};
+  if (!shooting.hasSchedule) return { phase: 'none', done: false, label: '', tone: '' };
+  return getClientShootingCountdown(shooting);
+}
+
+function getClientPortalDeptTheme(deptId) {
+  var themes = {
+    'marketing': { color: '#e63756', bg: 'rgba(230,55,86,0.13)' },
+    'final-video': { color: '#8b3c9e', bg: 'rgba(139,60,158,0.13)' },
+    'sound-man': { color: '#f59e0b', bg: 'rgba(245,158,11,0.13)' },
+    'foto-angkatan': { color: '#28b9d8', bg: 'rgba(40,185,216,0.13)' },
+    'foto-perkelas': { color: '#16a34a', bg: 'rgba(22,163,74,0.13)' },
+    'foto-random': { color: '#6366f1', bg: 'rgba(99,102,241,0.13)' },
+    'tiktok-video': { color: '#0ea5e9', bg: 'rgba(14,165,233,0.13)' }
+  };
+  return themes[String(deptId || '').toLowerCase()] || { color: '#28b9d8', bg: 'rgba(40,185,216,0.13)' };
+}
+
+function buildClientGlassProgressBar(progress, color) {
+  progress = Math.max(0, Math.min(100, Number(progress) || 0));
+  color = color || '#28b9d8';
+  return '<div class="cp-glass-bar" role="progressbar" aria-valuenow="'+progress+'" aria-valuemin="0" aria-valuemax="100">'
+    + '<span style="width:'+progress+'%;background:linear-gradient(90deg,'+color+'99,'+color+')"></span>'
+  + '</div>';
+}
+
+function parseClientIsoParts(iso) {
+  var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  var y = Number(m[1]);
+  var mo = Number(m[2]) - 1;
+  var d = Number(m[3]);
+  var dt = new Date(y, mo, d);
+  if (isNaN(dt.getTime())) return null;
+  var months = ['JAN','FEB','MAR','APR','MEI','JUN','JUL','AGT','SEP','OKT','NOV','DES'];
+  var days = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  return { iso: m[0], dayNum: String(d), month: months[mo] || '', weekday: days[dt.getDay()] || '', date: dt };
+}
+
+function formatClientPortalDateShort(value) {
+  var raw = String(value || '').trim();
+  if (!raw) return '';
+  var iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return Number(iso[3]) + '/' + Number(iso[2]) + '/' + iso[1];
+  var dmy = raw.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+  if (dmy) return Number(dmy[1]) + '/' + Number(dmy[2]) + '/' + dmy[3];
+  var parsed = (typeof parseOpsDate_ === 'function') ? parseOpsDate_(raw) : new Date(raw);
+  if (parsed && !isNaN(parsed.getTime())) {
+    return parsed.getDate() + '/' + (parsed.getMonth() + 1) + '/' + parsed.getFullYear();
+  }
+  return raw;
+}
+
+function buildClientShootTileHtml(parts) {
+  if (!parts) return '';
+  return ''
+    + '<div class="cp-ov-cal-tile">'
+      + '<div class="cp-ov-cal-band">'+escapeHtml(parts.month)+'</div>'
+      + '<div class="cp-ov-cal-num">'+escapeHtml(parts.dayNum)+'</div>'
+      + '<div class="cp-ov-cal-day">'+escapeHtml(parts.weekday)+'</div>'
+    + '</div>';
+}
+
+function buildClientShootingScheduleHtml(project) {
+  var shooting = (project && project.shooting) || {};
+  if (!shooting.hasSchedule || !shooting.label) return '';
+  var countdown = getClientShootingCountdown(shooting);
+  var phase = countdown.phase || 'upcoming';
+  var days = Number(shooting.days || 1);
+  var start = parseClientIsoParts(shooting.startDate);
+  var end = parseClientIsoParts(shooting.endDate || shooting.startDate);
+  var meta = days + ' hari shooting · tanggal ini sudah dikunci untuk project kamu.';
+  var note = 'Perubahan jadwal hanya bisa dilakukan lewat PIC FA Studio.';
+  if (phase === 'released') {
+    meta = days + ' hari shooting · tanggal ini sudah dilepas tim FA dan bisa dipakai project lain.';
+    note = 'Hubungi PIC FA Studio untuk menjadwalkan ulang.';
+  } else if (phase === 'done') {
+    meta = 'Shooting sudah selesai. Tim FA sedang mengerjakan hasil production.';
+    note = 'Pantau progress secara berkala di Production Tracker untuk update tahapan terbaru.';
+  } else if (phase === 'live') {
+    meta = 'Shooting sedang berlangsung · ' + days + ' hari dijadwalkan untuk project kamu.';
+    note = 'Setelah shooting selesai, pantau Production Tracker untuk progress hasil.';
+  }
+  var statusPill = countdown.label || 'Terjadwal';
+  if (statusPill === 'Sedang berjalan') statusPill = 'Sedang Berjalan';
+  var tiles = '';
+  if (start && end && start.iso !== end.iso) {
+    tiles = ''
+      + '<div class="cp-ov-cal-pair">'
+        + buildClientShootTileHtml(start)
+        + '<div class="cp-ov-cal-join"><span class="cp-ov-cal-dash" aria-hidden="true"></span><em>'+days+' hari</em><span class="cp-ov-cal-dash" aria-hidden="true"></span></div>'
+        + buildClientShootTileHtml(end)
+      + '</div>';
+  } else if (start) {
+    tiles = '<div class="cp-ov-cal-pair">'+buildClientShootTileHtml(start)+'</div>';
+  }
+  var cardMods = '';
+  if (shooting.released) cardMods += ' is-released';
+  if (phase === 'done') cardMods += ' is-done';
+  if (phase === 'live') cardMods += ' is-live';
+  return ''
+    + '<section class="cp-ov-card cp-ov-glass-mid cp-ov-shoot-card cp-ov-enter cp-shoot-card'+cardMods+'" style="--enter-delay:.16s">'
+      + '<div class="cp-ov-shoot">'
+        + (tiles || '')
+        + '<div class="cp-ov-shoot-copy">'
+          + '<div class="cp-ov-shoot-top">'
+            + '<span class="cp-ov-eyebrow">Jadwal Shooting</span>'
+            + '<span class="cp-ov-pill cp-ov-pill-live '+countdown.tone+'"><i aria-hidden="true"></i>'+escapeHtml(statusPill)+'</span>'
+          + '</div>'
+          + '<h3 class="cp-ov-shoot-title">'+escapeHtml(shooting.label)+'</h3>'
+          + '<p class="cp-ov-shoot-sub">'+escapeHtml(meta)+'</p>'
+          + '<div class="cp-ov-note">'+escapeHtml(note)+'</div>'
+        + '</div>'
+      + '</div>'
+    + '</section>';
+}
+
+function updateCpSidebarToggle() {
+  var shell = document.getElementById('cp-dashboard-card');
+  var btn = document.getElementById('cp-sidebar-toggle');
+  if (!shell || !btn) return;
+  var expanded = shell.classList.contains('cp-sidebar-expanded');
+  btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  btn.setAttribute('title', expanded ? 'Tutup sidebar' : 'Buka sidebar');
+}
+
+function toggleCpSidebar(forceExpanded, evt) {
+  if (evt && evt.stopPropagation) evt.stopPropagation();
+  var shell = document.getElementById('cp-dashboard-card');
+  if (!shell) return;
+  var expanded = typeof forceExpanded === 'boolean'
+    ? forceExpanded
+    : !shell.classList.contains('cp-sidebar-expanded');
+  shell.classList.toggle('cp-sidebar-expanded', expanded);
+  updateCpSidebarToggle();
+}
+
+function syncClientPortalSidebar() {
+  var name = CLIENT_PORTAL_STATE.name || _opsInternalName || 'Client';
+  var email = CLIENT_PORTAL_STATE.email || _opsInternalEmail || '';
+  var view = CLIENT_PORTAL_STATE.view || 'overview';
+  var user = document.getElementById('cp-sidebar-user');
+  if (user) {
+    var initial = String(name || 'C').trim().charAt(0).toUpperCase() || 'C';
+    user.innerHTML = '<div class="cp-avatar" aria-hidden="true">'+escapeHtml(initial)+'</div>'
+      + '<div class="cp-user-meta">'
+      + '<strong title="'+escapeHtml(name)+'">'+escapeHtml(name)+'</strong>'
+      + (email ? '<span title="'+escapeHtml(email)+'">'+escapeHtml(email)+'</span>' : '')
+      + '</div>';
+  }
+
+  ['overview', 'payment', 'drive'].forEach(function(key) {
+    var btn = document.getElementById('cp-nav-' + key);
+    if (btn) btn.classList.toggle('active', view === key);
+  });
+}
+
+function setClientPortalView(view) {
+  var allowed = { overview: 1, payment: 1, drive: 1 };
+  CLIENT_PORTAL_STATE.view = allowed[view] ? view : 'overview';
+  renderClientPortalHome();
+}
+
+function copyClientProjectId(projectId) {
+  var id = String(projectId || '').trim();
+  if (!id) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(id).then(function() {
+      showToast('Disalin', 'Project ID ' + id + ' sudah disalin.');
+    }).catch(function() {
+      showToast('Project ID', id);
+    });
+    return;
+  }
+  showToast('Project ID', id);
+}
+
+function renderClientPortalEmptyState(view) {
+  var wrap = document.getElementById('cp-dashboard-content');
+  if (!wrap) return;
+  var name = CLIENT_PORTAL_STATE.name || _opsInternalName || 'Client';
+  var copy = {
+    overview: {
+      kicker: 'Langkah berikutnya',
+      lead: getClientNextAction(null),
+      title: getClientTimeGreeting() + ', ' + name
+    },
+    payment: {
+      kicker: 'Pembayaran',
+      lead: 'Belum ada tagihan. Setelah booking & dealing, ringkasan pembayaran muncul di sini.',
+      title: 'Belum ada pembayaran'
+    },
+    drive: {
+      kicker: 'Akses Hasil',
+      lead: 'Folder hasil project akan muncul di sini setelah produksi selesai dan payment Lunas.',
+      title: 'Belum ada akses hasil'
+    }
+  }[view] || {
+    kicker: 'Client Portal',
+    lead: getClientNextAction(null),
+    title: getClientTimeGreeting() + ', ' + name
+  };
+
+  wrap.innerHTML = ''
+    + '<section class="cp-hero">'
+      + '<p class="cp-kicker">'+escapeHtml(copy.kicker)+'</p>'
+      + '<h3>'+escapeHtml(copy.title)+'</h3>'
+      + '<p class="cp-lead">'+escapeHtml(copy.lead)+'</p>'
+      + '<button class="btn-p" onclick="setPage(\'booking\')">Booking Now</button>'
+    + '</section>'
+    + (view === 'overview'
+      ? '<div class="cp-layout-2 is-equal">'
+          + '<section class="cp-panel">'
+            + '<h4>Cara mulai</h4>'
+            + '<ol class="cp-steps">'
+              + '<li class="cp-step is-now"><span class="cp-step-num">1</span><span>Isi <strong>Booking Now</strong> dengan brief &amp; harga kesepakatan</span></li>'
+              + '<li class="cp-step"><span class="cp-step-num">2</span><span>Tim FA follow-up dan dealing via WhatsApp</span></li>'
+              + '<li class="cp-step"><span class="cp-step-num">3</span><span>Project muncul di dashboard ini untuk dipantau</span></li>'
+            + '</ol>'
+          + '</section>'
+          + '<section class="cp-panel">'
+            + '<h4>Siapkan sebelum booking</h4>'
+            + '<p class="cp-panel-copy">Data ini sudah ada di form Booking. Tidak perlu diisi dua kali.</p>'
+            + '<div class="cp-prep-list">'
+              + '<span class="cp-chip">Brand / sekolah</span>'
+              + '<span class="cp-chip">Nomor WhatsApp</span>'
+              + '<span class="cp-chip">Layanan</span>'
+              + '<span class="cp-chip">Harga kesepakatan</span>'
+              + '<span class="cp-chip">PIC FA</span>'
+              + '<span class="cp-chip">Brief singkat</span>'
+            + '</div>'
+          + '</section>'
+        + '</div>'
+      : '');
+}
+
+function getClientPortalProjectOrNull() {
+  var projects = CLIENT_PORTAL_STATE.projects || [];
+  if (!projects.length) return null;
+  if (!CLIENT_PORTAL_STATE.project) CLIENT_PORTAL_STATE.project = projects[0];
+  return CLIENT_PORTAL_STATE.project;
+}
+
+function buildClientPortalQuickLinks(activeView) {
+  var links = [
+    { id: 'overview', label: 'Production Tracker' },
+    { id: 'payment', label: 'Pembayaran' },
+    { id: 'drive', label: 'Akses Hasil' }
+  ];
+  return '<nav class="cp-ov-tabs" aria-label="Navigasi portal client">'
+    + links.map(function(link) {
+      return '<button type="button" class="cp-ov-tab'+(activeView === link.id ? ' is-active' : '')+'" onclick="setClientPortalView(\''+link.id+'\')">'+escapeHtml(link.label)+'</button>';
+    }).join('')
+    + '</nav>';
+}
+
+function buildClientPortalGreetingBannerHtml(project) {
+  project = project || {};
+  var production = project.production || {};
+  var ops = project.productionOps || {};
+  var clientName = String(project.clientName || CLIENT_PORTAL_STATE.name || 'Client').trim();
+  var statusLabel = String(project.status || 'New Lead').trim() || 'Deal';
+  var stageLabel = buildProductionStageLabel(ops.stage || production.stage) || 'On Discuss';
+  var picName = String(project.pic || production.pic || '').trim() || 'PIC FA Studio';
+  var dealDateShort = formatClientPortalDateShort(project.timestamp || ops.updatedAt || '');
+  var shootPhase = getClientShootingPhase(project);
+  var title = 'Selamat datang, '+escapeHtml(clientName)+'!';
+  var sub = 'Kami senang bisa berkolaborasi dengan kamu. Pantau progres project kamu di sini.';
+  var extraPill = '';
+  if (shootPhase.phase === 'done' || shootPhase.phase === 'released') {
+    title = 'Shooting selesai, '+escapeHtml(clientName)+'!';
+    sub = 'Sesi shooting project kamu sudah selesai. Pantau progress secara berkala di Production Tracker untuk update tahapan produksi.';
+    extraPill = '<span class="cp-ov-pill cp-ov-pill-live is-tone-done"><i aria-hidden="true"></i>Shooting Selesai</span>';
+  } else if (shootPhase.phase === 'live') {
+    title = 'Shooting berlangsung, '+escapeHtml(clientName)+'!';
+    sub = 'Tim FA sedang di lapangan. Setelah selesai, pantau Production Tracker secara berkala untuk progress hasil.';
+    extraPill = '<span class="cp-ov-pill cp-ov-pill-live is-tone-live"><i aria-hidden="true"></i>Shooting Berjalan</span>';
+  }
+  return ''
+    + '<section class="cp-ov-card cp-ov-glass-dark cp-ov-banner cp-ov-enter" style="--enter-delay:0s">'
+      + '<div class="cp-ov-blob cp-ov-blob-cyan" aria-hidden="true"></div>'
+      + '<div class="cp-ov-blob cp-ov-blob-purple" aria-hidden="true"></div>'
+      + '<div class="cp-ov-banner-row">'
+        + '<div class="cp-ov-banner-copy">'
+          + '<span class="cp-ov-banner-eyebrow">FA Studio Indonesia · Portal Client</span>'
+          + '<h2 class="cp-ov-banner-title">'+title+'</h2>'
+          + '<p class="cp-ov-banner-sub">'+sub+'</p>'
+        + '</div>'
+        + '<div class="cp-ov-banner-meta">'
+          + '<div class="cp-ov-banner-pills">'
+            + '<span class="cp-ov-pill cp-ov-pill-cyan">'+escapeHtml(statusLabel)+'</span>'
+            + '<span class="cp-ov-pill cp-ov-pill-white">'+escapeHtml(stageLabel)+'</span>'
+            + extraPill
+          + '</div>'
+          + '<p class="cp-ov-banner-pic">PIC '+escapeHtml(picName)
+            + (dealDateShort ? ' · '+escapeHtml(dealDateShort) : '')
+          + '</p>'
+        + '</div>'
+      + '</div>'
+    + '</section>';
+}
+
+function formatClientPortalDateLong(value) {
+  var raw = String(value || '').trim();
+  if (!raw) return '';
+  var parts = null;
+  var iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) parts = { y: Number(iso[1]), m: Number(iso[2]), d: Number(iso[3]) };
+  else {
+    var parsed = (typeof parseOpsDate_ === 'function') ? parseOpsDate_(raw) : new Date(raw);
+    if (parsed && !isNaN(parsed.getTime())) {
+      parts = { y: parsed.getFullYear(), m: parsed.getMonth() + 1, d: parsed.getDate() };
+    }
+  }
+  if (!parts) return raw;
+  var months = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  return parts.d + ' ' + (months[parts.m - 1] || '') + ' ' + parts.y;
+}
+
+function getClientStatusToneClass(level) {
+  if (level === 'ready' || level === 'green') return 'is-tone-ready';
+  if (level === 'warn' || level === 'yellow') return 'is-tone-warn';
+  return 'is-tone-danger';
+}
+
+/** Placeholder saat data portal masih dijemput — supaya shell bisa tampil seketika. */
+function renderClientPortalSkeleton(view) {
+  var wrap = document.getElementById('cp-dashboard-content');
+  if (!wrap) return;
+  function block(cls, delay) {
+    return '<div class="cp-skel-card '+cls+'" style="--enter-delay:'+delay+'s"></div>';
+  }
+  wrap.innerHTML = '<div class="cp-skel" aria-busy="true" aria-live="polite">'
+    + block('cp-skel-banner', 0)
+    + block('cp-skel-wide', .06)
+    + (view === 'overview'
+      ? '<div class="cp-skel-grid">'+block('cp-skel-half', .12)+block('cp-skel-half', .16)+'</div>'
+      : block('cp-skel-wide', .12))
+    + '</div>';
+}
+
+function renderClientPortalHome() {
+  var wrap = document.getElementById('cp-dashboard-content');
+  if (!wrap) return;
+  var view = CLIENT_PORTAL_STATE.view || 'overview';
+  syncClientPortalSidebar();
+  var project = getClientPortalProjectOrNull();
+  if (!project) {
+    if (CLIENT_PORTAL_STATE.loading) renderClientPortalSkeleton(view);
+    else renderClientPortalEmptyState(view);
+    return;
+  }
+  if (view === 'payment') {
+    renderClientPortalPaymentView(project);
+    return;
+  }
+  if (view === 'drive') {
+    renderClientPortalDriveView(project);
+    return;
+  }
+  renderClientPortalDashboard(project);
+}
+
+function logoutClientPortal() {
+  logoutOperationSystem();
+}
+
+function getClientProductionPercent(production) {
+  production = production || {};
+  if (typeof production.overallPercent === 'number' && isFinite(production.overallPercent)) {
+    return Math.max(0, Math.min(100, Math.round(production.overallPercent)));
+  }
+  var stage = normalizeProductionStageClient(production.stage || '');
+  if (stage === 'On Discuss') return 25;
+  if (stage === 'Production/Shooting') return 50;
+  if (stage === 'Post Production') return 75;
+  if (stage === 'Project Selesai') return 100;
+  return 0;
+}
+
+function normalizeProductionStageClient(stage) {
+  stage = String(stage || '').trim();
+  if (stage === 'On Discuss with FA Team' || stage === 'On Discuss') return 'On Discuss';
+  if (stage === 'Production / Shooting') return 'Production/Shooting';
+  if (PRODUCTION_STAGES.indexOf(stage) >= 0) return stage;
+  return stage || 'On Discuss';
+}
+
+function getLeadProductionPercent(lead) {
+  lead = lead || {};
+  return getClientProductionPercent({
+    stage: lead.productionStage
+  });
+}
+
+function buildProductionStageLabel(stage) {
+  return normalizeProductionStageClient(stage || 'On Discuss');
+}
+
+function saveProductionProgress(projectId) {
+  var lead = LEADS.find(function(l){ return l.id === projectId; });
+  if (!lead) return;
+
+  var stageEl = document.getElementById('prod-stage-select');
+  var notesEl = document.getElementById('prod-notes-input');
+  if (!stageEl) return;
+
+  var stage = stageEl.value;
+  var notes = notesEl ? notesEl.value.trim() : '';
+
+  savingProductionId = projectId;
+  renderProjectDetail(projectId, true);
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      savingProductionId = null;
+      if (res && res.success) {
+        var production = (res.production || {});
+        lead.productionStage = production.stage || stage;
+        lead.postProductionProgress = '';
+        lead.productionUpdatedAt = production.updatedAt || lead.productionUpdatedAt;
+        lead.productionUpdatedBy = production.updatedBy || lead.productionUpdatedBy;
+        lead.productionNotes = production.notes || notes;
+        delete PROJECT_TIMELINES[projectId];
+        renderProjectDetail(projectId, true);
+        var mailNote = res.notification && res.notification.sent
+          ? ' Email update tracking dikirim ke client.'
+          : ((res.notification && res.notification.reason) ? ' ' + res.notification.reason : '');
+        showToast('Tracking Diperbarui', 'Status produksi client sudah diupdate.' + mailNote);
+      } else {
+        renderProjectDetail(projectId, true);
+        showToast('Gagal Update', (res && res.error) || 'Tracking status gagal disimpan.');
+      }
+    })
+    .withFailureHandler(function(err) {
+      savingProductionId = null;
+      renderProjectDetail(projectId, true);
+      showToast('Error', err.message || 'Gagal menghubungi server.');
+    })
+    .updateProductionProgress(getInternalPayKey(), projectId, stage, '', notes);
+}
+
+function getProductionOpsStageCfg(stage) {
+  stage = normalizeProductionStageClient(stage || 'On Discuss');
+  var map = {
+    'On Discuss': { bg: 'rgba(59,130,246,.12)', color: '#1d4ed8', border: 'rgba(37,99,235,.2)' },
+    'Production/Shooting': { bg: 'rgba(245,158,11,.14)', color: '#b45309', border: 'rgba(180,83,9,.22)' },
+    'Post Production': { bg: 'rgba(124,58,237,.12)', color: '#6d28d9', border: 'rgba(109,40,217,.2)' },
+    'Project Selesai': { bg: 'rgba(34,197,94,.12)', color: '#15803d', border: 'rgba(21,128,61,.22)' }
+  };
+  return map[stage] || map['On Discuss'];
+}
+
+function getProductionOpsStatusCfg(status) {
+  status = String(status || 'Belum Mulai').trim();
+  var map = {
+    'Done': { bg: 'rgba(34,197,94,.12)', color: '#15803d', border: 'rgba(21,128,61,.22)', fill: '#22c55e' },
+    'On Progress': { bg: 'rgba(59,130,246,.12)', color: '#2563eb', border: 'rgba(37,99,235,.22)', fill: '#3b82f6' },
+    'Menunggu Review': { bg: 'rgba(245,158,11,.14)', color: '#b45309', border: 'rgba(180,83,9,.22)', fill: '#f59e0b' },
+    'Belum Mulai': { bg: 'rgba(148,163,184,.14)', color: '#64748b', border: 'rgba(100,116,139,.2)', fill: '#cbd5e1' }
+  };
+  return map[status] || map['Belum Mulai'];
+}
+
+/** Warna chart progress: 0% merah → 50% kuning → 100% hijau. */
+function getProgressHeatColor(percent) {
+  percent = Math.max(0, Math.min(100, Number(percent) || 0));
+  function hexToRgb(hex) {
+    return [
+      parseInt(hex.slice(1, 3), 16),
+      parseInt(hex.slice(3, 5), 16),
+      parseInt(hex.slice(5, 7), 16)
+    ];
+  }
+  function mix(a, b, t) {
+    return Math.round(a + (b - a) * t);
+  }
+  var red = hexToRgb('#ef4444');
+  var yellow = hexToRgb('#f59e0b');
+  var green = hexToRgb('#22c55e');
+  var from = red;
+  var to = yellow;
+  var t = percent / 50;
+  if (percent >= 50) {
+    from = yellow;
+    to = green;
+    t = (percent - 50) / 50;
+  }
+  var r = mix(from[0], to[0], t);
+  var g = mix(from[1], to[1], t);
+  var b = mix(from[2], to[2], t);
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
+function getProgressHeatFill(percent) {
+  return getProgressHeatColor(percent);
+}
+
+function getProductionOpsStatusClass(status) {
+  status = normalizeProductionOpsStatusClient(status);
+  if (status === 'Done') return 'is-done';
+  if (status === 'On Progress') return 'is-progress';
+  if (status === 'Menunggu Review') return 'is-review';
+  return 'is-pending';
+}
+
+function getProductionOpsDeptIconSvg(deptId) {
+  var icons = {
+    'marketing': '<svg viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>',
+    'final-video': '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M10 9l6 3-6 3V9z"/></svg>',
+    'sound-man': '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+    'foto-angkatan': '<svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
+    'foto-perkelas': '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+    'foto-random': '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="11" r="1.8"/><path d="M21 16l-5-5-4 4-2-2-5 5"/></svg>',
+    'tiktok-video': '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M10 8v8l6-4-6-4z"/></svg>'
+  };
+  return icons[deptId] || '<svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+}
+
+function getProductionOpsFolderIconSvg() {
+  return '<svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+}
+
+function parseOpsDate_(value) {
+  if (!value) return null;
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+  var text = String(value).trim();
+  if (!text) return null;
+  var direct = new Date(text);
+  if (!isNaN(direct.getTime())) return direct;
+  var idMatch = text.match(/(\d{1,2})\s+(\w+)\s+(\d{4})(?:[,\s]+(\d{1,2})[.:](\d{2}))?/i);
+  if (idMatch) {
+    var months = { jan:0, feb:1, mar:2, apr:3, mei:4, may:4, jun:5, jul:6, agu:7, aug:7, sep:8, okt:9, oct:9, nov:10, des:11, dec:11 };
+    var mon = months[String(idMatch[2] || '').slice(0, 3).toLowerCase()];
+    if (mon !== undefined) {
+      var d = new Date(Number(idMatch[3]), mon, Number(idMatch[1]), Number(idMatch[4] || 0), Number(idMatch[5] || 0));
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  return null;
+}
+
+function formatRelativeTimeId(value) {
+  var date = parseOpsDate_(value);
+  if (!date) return 'belum diupdate';
+  var diffMs = Date.now() - date.getTime();
+  if (diffMs < 0) return 'baru saja';
+  var mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'baru saja';
+  if (mins < 60) return mins + ' menit lalu';
+  var hours = Math.floor(mins / 60);
+  if (hours < 24) return hours + ' jam lalu';
+  var days = Math.floor(hours / 24);
+  if (days === 1) return 'kemarin';
+  if (days < 30) return days + ' hari lalu';
+  var months = Math.floor(days / 30);
+  if (months < 12) return months + ' bulan lalu';
+  return Math.floor(months / 12) + ' tahun lalu';
+}
+
+function isProductionOpsDeptLockedClient(item) {
+  if (typeof isDirectorUser === 'function' && isDirectorUser()) return false;
+  item = item || {};
+  return String(item.approvalStatus || '').trim().toUpperCase() === 'APPROVED'
+    && Number(item.progress || 0) >= 100;
+}
+
+function toggleProdopsEdit(deptId) {
+  var lead = findProductionOpsLead(PRODUCTION_OPS_ACTIVE_ID);
+  if (lead) {
+    var items = getLeadProductionOpsItems(lead);
+    var target = items.find(function(item) { return item.id === deptId; });
+    if (isProductionOpsDeptLockedClient(target)) {
+      showDeptLockedAlert(target, lead);
+      return;
+    }
+    if (target && String(target.approvalStatus || '').toUpperCase() === 'PENDING') {
+      showToast('Menunggu Validasi', 'Departemen ini sedang menunggu review Direktur.', 'warning');
+      return;
+    }
+  }
+  var nextId = PRODUCTION_OPS_EDITING_ID === deptId ? '' : deptId;
+  PRODUCTION_OPS_EDITING_ID = nextId;
+  syncProdopsDeptEditState(nextId);
+}
+
+function syncProdopsDeptEditState(activeDeptId) {
+  var cards = document.querySelectorAll('#production-ops-content .prodops-dept-card[data-dept-id]');
+  if (!cards.length) {
+    renderProductionOpsView();
+    return;
+  }
+  cards.forEach(function(card) {
+    var id = card.getAttribute('data-dept-id') || '';
+    var isOpen = !!activeDeptId && id === activeDeptId;
+    card.classList.toggle('is-editing', isOpen);
+    var btn = card.querySelector('.prodops-dept-edit-btn:not(.is-locked):not([disabled])');
+    if (btn) btn.textContent = isOpen ? 'Tutup form update' : 'Update progress';
+  });
+  if (activeDeptId) {
+    var activeCard = document.querySelector('#production-ops-content .prodops-dept-card[data-dept-id="'+activeDeptId+'"]');
+    if (activeCard && activeCard.scrollIntoView) {
+      activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    }
+  }
+}
+
+function normalizeProductionOpsStatusClient(status) {
+  status = String(status || '').trim().toLowerCase();
+  if (status === 'done' || status === 'selesai') return 'Done';
+  if (status === 'on progress' || status === 'in progress' || status === 'progress') return 'On Progress';
+  if (status === 'menunggu review' || status === 'review' || status === 'on review') return 'Menunggu Review';
+  return 'Belum Mulai';
+}
+
+function normalizeProductionOpsProgressClient(value, status) {
+  var num = Number(value);
+  var normalizedStatus = normalizeProductionOpsStatusClient(status);
+  if (!isFinite(num)) {
+    if (normalizedStatus === 'Done') return 100;
+    if (normalizedStatus === 'Menunggu Review') return 85;
+    if (normalizedStatus === 'On Progress') return 35;
+    return 0;
+  }
+  num = Math.max(0, Math.min(100, Math.round(num)));
+  if (normalizedStatus === 'Done' && num < 100) num = 100;
+  return num;
+}
+
+function getDeptFolderUrl(projectId, deptId) {
+  var pid = String(projectId || '').trim();
+  var bare = pid.replace(/^#/, '');
+  var entry = DEPT_FOLDER_MAP[pid] || DEPT_FOLDER_MAP['#' + bare] || DEPT_FOLDER_MAP[bare] || {};
+  return entry[deptId] || '';
+}
+
+function mapProdOpsItemFields(item, idx, extra) {
+  extra = extra || {};
+  var status = normalizeProductionOpsStatusClient(item.status || 'Belum Mulai');
+  var pendingRaw = item.pendingProgress != null && item.pendingProgress !== ''
+    ? item.pendingProgress
+    : item.pendingprogress;
+  return {
+    id: String(extra.id || item.id || ('folder-' + idx)),
+    label: String(extra.label || item.label || ('Folder ' + (idx + 1))),
+    icon: extra.icon || makeOpsFolderIconClient(extra.label || item.label),
+    pic: String(item.pic || '').trim(),
+    status: status,
+    progress: normalizeProductionOpsProgressClient(item.progress, status),
+    note: String(item.note || '').trim(),
+    updatedAt: String(item.updatedAt || item.updatedat || '').trim(),
+    folderUrl: String(extra.folderUrl || item.folderUrl || '').trim(),
+    approvalStatus: String(item.approvalStatus || item.approvalstatus || '').trim().toUpperCase(),
+    approvalId: String(item.approvalId || item.approvalid || '').trim(),
+    reviewNotes: String(item.reviewNotes || item.reviewnotes || '').trim(),
+    pendingProgress: pendingRaw === '' || pendingRaw == null
+      ? ''
+      : normalizeProductionOpsProgressClient(pendingRaw, item.pendingStatus || item.pendingstatus || status),
+    pendingStatus: String(item.pendingStatus || item.pendingstatus || '').trim(),
+    pendingPic: String(item.pendingPic || item.pendingpic || '').trim(),
+    pendingNote: String(item.pendingNote || item.pendingnote || '').trim(),
+    order: Number(extra.order || item.order || (idx + 1)) || (idx + 1)
+  };
+}
+
+function getLeadProductionOpsItems(lead) {
+  lead = lead || {};
+  var folders = getOpsFolderCatalogForProject(lead.id);
+  var raw = lead.productionOpsData;
+  if (typeof raw === 'string') {
+    try { raw = raw ? JSON.parse(raw) : []; } catch (e) { raw = []; }
+  }
+  if (!Array.isArray(raw)) raw = [];
+  var byId = {};
+  raw.forEach(function(item) {
+    var key = String((item && item.id) || '').trim().toLowerCase();
+    if (key) byId[key] = item;
+    var labelKey = slugifyFolderNameClient((item && item.label) || '');
+    if (labelKey && !byId[labelKey]) byId[labelKey] = item;
+  });
+
+  if (!folders.length) {
+    return raw.map(function(item, idx) {
+      return mapProdOpsItemFields(item, idx, {
+        id: String(item.id || ('folder-' + idx)),
+        label: String(item.label || ('Folder ' + (idx + 1)))
+      });
+    });
+  }
+
+  return folders.map(function(folder, idx) {
+    var folderId = String(folder.id || slugifyFolderNameClient(folder.label || '')).trim();
+    var item = byId[folderId] || byId[slugifyFolderNameClient(folder.label || '')] || {};
+    return mapProdOpsItemFields(item, idx, {
+      id: folderId,
+      label: folder.label || item.label || ('Folder ' + (idx + 1)),
+      folderUrl: folder.url || item.folderUrl || getDeptFolderUrl(lead.id, folderId),
+      order: folder.order || (idx + 1)
+    });
+  });
+}
+
+function getProductionOpsSummaryClient(items) {
+  items = items || [];
+  if (!items.length) return { overallPercent: 0, stage: 'On Discuss' };
+  var total = items.reduce(function(sum, item) { return sum + Number(item.progress || 0); }, 0);
+  var overallPercent = Math.round(total / items.length);
+  var map = {};
+  items.forEach(function(item) { map[item.id] = item; });
+  var finalVideo = map['final-video'] || {};
+  var shootStarted = items.some(function(item) {
+    if (item.id === 'marketing') return false;
+    return Number(item.progress || 0) > 0;
+  });
+  var allDone = items.every(function(item) {
+    if (Number(item.progress || 0) < 100) return false;
+    var approval = String(item.approvalStatus || '').toUpperCase();
+    if (approval === 'APPROVED') return true;
+    if (approval === 'PENDING' || approval === 'REJECTED' || approval === 'CANCELLED') return false;
+    return item.status === 'Done';
+  });
+  var stage = 'On Discuss';
+  if (allDone) stage = 'Project Selesai';
+  else if (Number(finalVideo.progress || 0) > 0 || overallPercent >= 70) stage = 'Post Production';
+  else if (shootStarted || overallPercent >= 25) stage = 'Production/Shooting';
+  return { overallPercent: overallPercent, stage: stage };
+}
+
+function sameProductionOpsProjectId(a, b) {
+  return String(a || '').replace(/^#/, '').trim().toLowerCase() === String(b || '').replace(/^#/, '').trim().toLowerCase();
+}
+
+function normalizeProductionOpsProjectId(id) {
+  id = String(id || '').trim();
+  if (!id) return '';
+  return id.charAt(0) === '#' ? id : '#' + id.replace(/^#/, '');
+}
+
+function findProductionOpsLead(projectId, pool) {
+  pool = pool || LEADS;
+  var normalizedId = normalizeProductionOpsProjectId(projectId);
+  if (!normalizedId) return null;
+  var found = pool.find(function(item) { return sameProductionOpsProjectId(item.id, normalizedId); });
+  if (found) return found;
+  return LEADS.find(function(item) { return sameProductionOpsProjectId(item.id, normalizedId); }) || null;
+}
+
+function getProductionOpsLeadPool() {
+  var pool = LEADS.slice();
+  if (PRODUCTION_OPS_FILTER === 'active') {
+    pool = pool.filter(function(lead) {
+      return ['Deal', 'In-Production', 'Done'].indexOf(String(lead.status || '')) >= 0;
+    });
+  }
+  pool.sort(function(a, b) {
+    return String(a.client || '').localeCompare(String(b.client || ''));
+  });
+  return pool;
+}
+
+function initProductionOpsView() {
+  var picOnly = typeof isDeptPicUser === 'function' && isDeptPicUser();
+  ensureOperationData({ source: 'leads', showLoading: true, productionOpsOnly: picOnly }, function() {
+    syncProductionOpsFoldersForActiveProject(function() {
+      renderProductionOpsView();
+    });
+  });
+}
+
+function syncProductionOpsFoldersForActiveProject(onDone) {
+  var projectId = PRODUCTION_OPS_ACTIVE_ID;
+  if (!projectId) {
+    if (typeof onDone === 'function') onDone();
+    return;
+  }
+  var cached = getOpsFolderCatalogForProject(projectId);
+  if (cached && cached.length) {
+    if (typeof onDone === 'function') onDone();
+    return;
+  }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.success) {
+        storeOpsFolderCatalog(projectId, res.catalog || [], res.deptFolderMap || {});
+      }
+      if (typeof onDone === 'function') onDone();
+    })
+    .withFailureHandler(function() {
+      if (typeof onDone === 'function') onDone();
+    })
+    .syncProductionOpsFolders(getInternalPayKey(), projectId);
+}
+
+function setProductionOpsFilter(filter) {
+  PRODUCTION_OPS_FILTER = filter === 'all' ? 'all' : 'active';
+  renderProductionOpsView();
+}
+
+function setProductionOpsProject(projectId) {
+  PRODUCTION_OPS_ACTIVE_ID = normalizeProductionOpsProjectId(projectId);
+  PRODUCTION_OPS_EDITING_ID = '';
+  syncProductionOpsFoldersForActiveProject(function() {
+    renderProductionOpsView();
+  });
+}
+
+function openProductionOpsForProject(projectId) {
+  PRODUCTION_OPS_ACTIVE_ID = normalizeProductionOpsProjectId(projectId);
+  setView('production-ops');
+}
+
+function buildProductionOpsProjectOptions(pool, activeId) {
+  return pool.map(function(lead) {
+    var summary = getProductionOpsSummaryClient(getLeadProductionOpsItems(lead));
+    return '<option value="'+escapeHtml(lead.id)+'"'+(sameProductionOpsProjectId(lead.id, activeId) ? ' selected' : '')+'>'+escapeHtml(lead.client || lead.id)+' · '+summary.overallPercent+'%</option>';
+  }).join('');
+}
+
+function buildProdopsDonutHtml(percent, color, label, trackColor) {
+  percent = Math.max(0, Math.min(100, Number(percent) || 0));
+  color = color || getProgressHeatColor(percent);
+  label = label || 'Akumulasi';
+  var size = 168;
+  var stroke = 22;
+  var r = (size - stroke) / 2;
+  var cx = size / 2;
+  var cy = size / 2;
+  var circ = 2 * Math.PI * r;
+  var len = (percent / 100) * circ;
+  var gap = circ - len;
+  var motion = (typeof opsMotionEnabled === 'function') ? opsMotionEnabled() : true;
+  try {
+    if (motion && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      motion = false;
+    }
+  } catch (e) {}
+  var dashInit = motion ? ('0 ' + circ.toFixed(2)) : (len.toFixed(2) + ' ' + gap.toFixed(2));
+  var track = trackColor || 'var(--ops-bar-track, rgba(15,60,80,0.10))';
+  return '<div class="prodops-donut" data-percent="' + percent + '">'
+    + '<svg class="prodops-donut-svg" viewBox="0 0 ' + size + ' ' + size + '" aria-hidden="true">'
+      + '<circle class="prodops-donut-track" cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + track + '" stroke-width="' + stroke + '"/>'
+      + '<circle class="prodops-donut-seg" cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="' + stroke + '" stroke-linecap="round" data-len="' + len.toFixed(2) + '" data-gap="' + gap.toFixed(2) + '" stroke-dasharray="' + dashInit + '" transform="rotate(-90 ' + cx + ' ' + cy + ')"/>'
+    + '</svg>'
+    + '<div class="prodops-donut-inner"' + (motion ? ' style="opacity:0;transform:scale(.9)"' : '') + '>'
+      + '<strong>' + percent + '%</strong><span>' + escapeHtml(label) + '</span>'
+    + '</div>'
+  + '</div>';
+}
+
+function animateProdopsDonut(root) {
+  if (!root) return;
+  var motion = true;
+  try {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) motion = false;
+  } catch (e) {}
+  if (typeof opsMotionEnabled === 'function' && !opsMotionEnabled()) motion = false;
+  if (!motion) {
+    root.querySelectorAll('.prodops-donut-seg').forEach(function(c) {
+      var len = c.getAttribute('data-len') || '0';
+      var gap = c.getAttribute('data-gap') || '0';
+      c.style.strokeDasharray = len + ' ' + gap;
+    });
+    root.querySelectorAll('.prodops-donut-inner').forEach(function(inner) {
+      inner.style.opacity = '1';
+      inner.style.transform = 'scale(1)';
+    });
+    return;
+  }
+  root.querySelectorAll('.prodops-donut-seg').forEach(function(c) {
+    var len = parseFloat(c.getAttribute('data-len') || '0');
+    var gap = parseFloat(c.getAttribute('data-gap') || '0');
+    var total = len + gap;
+    c.style.strokeDasharray = '0 ' + total;
+    requestAnimationFrame(function() {
+      c.style.transition = 'stroke-dasharray .95s cubic-bezier(.22,1,.36,1) .08s';
+      c.style.strokeDasharray = len + ' ' + gap;
+    });
+  });
+  root.querySelectorAll('.prodops-donut-inner').forEach(function(inner) {
+    inner.style.opacity = '0';
+    inner.style.transform = 'scale(.9)';
+    requestAnimationFrame(function() {
+      inner.style.transition = 'opacity .45s ease .28s, transform .45s cubic-bezier(.22,1,.36,1) .28s';
+      inner.style.opacity = '1';
+      inner.style.transform = 'scale(1)';
+    });
+  });
+}
+
+function buildProductionOpsToolbarHtml(pool, activeId) {
+  var options = pool.length
+    ? buildProductionOpsProjectOptions(pool, activeId)
+    : '<option value="">Belum ada project</option>';
+  return '<div class="prodops-page-head">'
+      +'<div class="prodops-page-title">'
+        +'<h3>Tracker</h3>'
+        +'<p class="lead-ts">Direktori kerja per departemen. Akumulasi progress di sini otomatis mengupdate stage tracker client existing.</p>'
+      +'</div>'
+      +'<button type="button" class="btn-g" onclick="initProductionOpsView()">Refresh</button>'
+    +'</div>'
+    +'<div class="production-ops-toolbar">'
+      +'<div class="fg"><label>Pilih Project</label>'
+        +'<select class="fc" id="production-ops-project-select" onchange="setProductionOpsProject(this.value)">'+options+'</select>'
+      +'</div>'
+      +'<div class="fg"><label>Filter Cepat</label>'
+        +'<div class="production-ops-filter-row">'
+          +'<button type="button" class="production-ops-filter'+(PRODUCTION_OPS_FILTER === 'active' ? ' active' : '')+'" id="prodops-filter-active" onclick="setProductionOpsFilter(\'active\')">Active</button>'
+          +'<button type="button" class="production-ops-filter'+(PRODUCTION_OPS_FILTER === 'all' ? ' active' : '')+'" id="prodops-filter-all" onclick="setProductionOpsFilter(\'all\')">All</button>'
+        +'</div>'
+      +'</div>'
+    +'</div>'
+    +'<div class="prodops-section-divider"></div>';
+}
+
+function renderProductionOpsView() {
+  var content = document.getElementById('production-ops-content');
+  if (!content) return;
+
+  var pool = getProductionOpsLeadPool();
+
+  if (!pool.length) {
+    content.innerHTML = '<div class="ops-card production-ops-unified">'
+      + buildProductionOpsToolbarHtml([], '')
+      + '<div class="prodops-empty">Belum ada project yang cocok untuk filter ini.</div>'
+    + '</div>';
+    return;
+  }
+
+  if (!PRODUCTION_OPS_ACTIVE_ID || !pool.some(function(lead) { return sameProductionOpsProjectId(lead.id, PRODUCTION_OPS_ACTIVE_ID); })) {
+    PRODUCTION_OPS_ACTIVE_ID = pool[0] ? pool[0].id : '';
+  } else {
+    PRODUCTION_OPS_ACTIVE_ID = normalizeProductionOpsProjectId(PRODUCTION_OPS_ACTIVE_ID);
+  }
+
+  var lead = findProductionOpsLead(PRODUCTION_OPS_ACTIVE_ID, pool);
+  if (!lead && pool.length) {
+    lead = pool[0];
+    PRODUCTION_OPS_ACTIVE_ID = lead.id;
+  }
+  if (!lead) {
+    content.innerHTML = '<div class="ops-card production-ops-unified">'
+      + buildProductionOpsToolbarHtml(pool, PRODUCTION_OPS_ACTIVE_ID)
+      + '<div class="prodops-empty">Project tidak ditemukan.</div>'
+    + '</div>';
+    return;
+  }
+  var items = getLeadProductionOpsItems(lead);
+  var summary = getProductionOpsSummaryClient(items);
+  var stageCfg = getProductionOpsStageCfg(summary.stage);
+  var driveLink = safeExternalUrl(lead.driveUrl);
+  var badgeStatus = getStatusCfg(lead.status || 'Deal');
+
+  var bars = items.map(function(item) {
+    var fill = getProgressHeatColor(item.progress);
+    return '<div class="prodops-bar-row">'
+      +'<div class="prodops-bar-label">'+escapeHtml(item.label)+'</div>'
+      +'<div class="prodops-bar"><span style="width:'+item.progress+'%;background:'+fill+'"></span></div>'
+      +'<div class="prodops-bar-val">'+item.progress+'%</div>'
+    +'</div>';
+  }).join('');
+
+  var donutHtml = buildProdopsDonutHtml(summary.overallPercent, getProgressHeatColor(summary.overallPercent), 'Akumulasi');
+
+  var cards = items.map(function(item) {
+    var cfg = getProductionOpsStatusCfg(item.status);
+    var fill = getProgressHeatColor(item.progress);
+    var statusClass = getProductionOpsStatusClass(item.status);
+    var isSaving = PRODUCTION_OPS_SAVING_ID === (lead.id + ':' + item.id);
+    var isLocked = isProductionOpsDeptLockedClient(item);
+    var isPending = item.approvalStatus === 'PENDING';
+    var canEditDept = typeof canEditProductionOpsDepartment !== 'function' || canEditProductionOpsDepartment(item.id);
+    var editLocked = isLocked || isPending || !canEditDept;
+    if (isLocked && PRODUCTION_OPS_EDITING_ID === item.id) PRODUCTION_OPS_EDITING_ID = '';
+    var isEditing = !editLocked && PRODUCTION_OPS_EDITING_ID === item.id;
+    var deptDriveUrl = safeExternalUrl(item.folderUrl || getDeptFolderUrl(lead.id, item.id));
+    var folderHref = deptDriveUrl || driveLink || '';
+    var timeLabel = formatRelativeTimeId(item.updatedAt || lead.productionOpsUpdatedAt || lead.productionUpdatedAt);
+    var approvalHint = '';
+    if (isLocked) {
+      approvalHint = '<p class="prodops-dept-lock-note">Selesai &amp; tervalidasi Direktur · form terkunci · tidak bisa diupdate lagi</p>';
+    } else if (item.approvalStatus === 'PENDING') {
+      var pendingLabel = item.pendingProgress !== '' && item.pendingProgress != null
+        ? (' · diajukan ' + item.pendingProgress + '%')
+        : '';
+      approvalHint = '<p class="prodops-dept-pic" style="color:var(--purple2)">Menunggu validasi Direktur'+pendingLabel+' · progress resmi '+item.progress+'%</p>';
+    } else if (item.approvalStatus === 'REJECTED') {
+      approvalHint = '<p class="prodops-dept-pic" style="color:#f87171">Ditolak: '+escapeHtml(item.reviewNotes || 'Perlu diperbaiki')+'</p>';
+    } else if (item.approvalStatus === 'APPROVED') {
+      approvalHint = '<p class="prodops-dept-pic" style="color:#4ade80">Tervalidasi Direktur</p>';
+    }
+    var editBtn = '';
+    if (!canEditDept) {
+      editBtn = '<button type="button" class="prodops-dept-edit-btn" style="opacity:.55;cursor:default" disabled>Departemen lain</button>';
+    } else if (isLocked) {
+      editBtn = '<button type="button" class="prodops-dept-edit-btn is-locked" onclick="showDeptLockedAlertFromCard(\''+escapeJs(item.id)+'\')">Selesai · Terkunci</button>';
+    } else if (isPending) {
+      editBtn = '<button type="button" class="prodops-dept-edit-btn" style="opacity:.55;cursor:default" disabled>Menunggu validasi Direktur</button>';
+    } else {
+      editBtn = '<button type="button" class="prodops-dept-edit-btn" onclick="toggleProdopsEdit(\''+escapeJs(item.id)+'\')">'+(isEditing ? 'Tutup form update' : 'Update progress')+'</button>';
+    }
+    return '<article class="prodops-dept-card'+(isEditing ? ' is-editing' : '')+(isLocked ? ' is-locked' : '')+(isPending ? ' is-pending-review' : '')+'" data-dept-id="'+escapeHtml(item.id)+'">'
+      +'<div class="prodops-dept-top">'
+        +'<div class="prodops-dept-icon">'+getProductionOpsDeptIconSvg(item.id)+'</div>'
+        +'<div class="prodops-dept-pct">'+item.progress+'%</div>'
+      +'</div>'
+      +'<h4 class="prodops-dept-name">'+escapeHtml(item.label)+'</h4>'
+      +'<p class="prodops-dept-pic">PIC: '+escapeHtml(item.pic || 'Belum diisi')+'</p>'
+      +'<span class="prodops-dept-status '+statusClass+'"><span class="dot"></span>'+escapeHtml(item.status)+'</span>'
+      +approvalHint
+      +'<div class="prodops-dept-bar"><span style="width:'+item.progress+'%;background:'+fill+'"></span></div>'
+      +'<div class="prodops-dept-foot">'
+        +(folderHref && !isLocked
+          ? '<a class="prodops-folder-btn" href="'+folderHref+'" target="_blank" rel="noopener">'+getProductionOpsFolderIconSvg()+' Buka Folder</a>'
+          : (folderHref && isLocked
+            ? '<a class="prodops-folder-btn is-view-only" href="'+folderHref+'" target="_blank" rel="noopener" title="Hanya lihat — departemen sudah terkunci">'+getProductionOpsFolderIconSvg()+' Lihat Folder</a>'
+            : '<span class="prodops-folder-btn" style="opacity:.4;pointer-events:none">'+getProductionOpsFolderIconSvg()+' Buka Folder</span>'))
+        +'<span class="prodops-dept-time">'+escapeHtml(timeLabel)+'</span>'
+      +'</div>'
+      +editBtn
+      +(editLocked ? '' :
+      '<div class="prodops-dept-edit">'
+        +'<div class="fg"><label>Status</label><select class="fc" id="prodops-status-'+escapeHtml(item.id)+'">'
+          +'<option value="Belum Mulai"'+(item.status === 'Belum Mulai' ? ' selected' : '')+'>Belum Mulai</option>'
+          +'<option value="On Progress"'+(item.status === 'On Progress' ? ' selected' : '')+'>On Progress</option>'
+          +'<option value="Menunggu Review"'+(item.status === 'Menunggu Review' ? ' selected' : '')+'>Menunggu Review</option>'
+          +'<option value="Done"'+(item.status === 'Done' ? ' selected' : '')+'>Done</option>'
+        +'</select></div>'
+        +'<div class="fg"><label>Progress %</label><input class="fc" type="number" min="0" max="100" id="prodops-progress-'+escapeHtml(item.id)+'" value="'+item.progress+'"/></div>'
+        +'<div class="fg"><label>PIC</label><input class="fc" type="text" id="prodops-pic-'+escapeHtml(item.id)+'" value="'+escapeHtml(item.pic)+'" placeholder="Nama PIC dept."/></div>'
+        +'<div class="fg"><label>Catatan Dept.</label><input class="fc" type="text" id="prodops-note-'+escapeHtml(item.id)+'" value="'+escapeHtml(item.note)+'" placeholder="Contoh: file shotlist disetujui"/></div>'
+        +'<div class="prodops-dept-edit-actions">'
+          +'<button class="btn-p" onclick="saveProductionOpsDepartment(\''+escapeJs(lead.id)+'\',\''+escapeJs(item.id)+'\')" '+(isSaving ? 'disabled' : '')+'>'+(isSaving ? 'Menyimpan...' : 'Simpan Update')+'</button>'
+        +'</div>'
+      +'</div>')
+    +'</article>';
+  }).join('');
+
+  content.innerHTML = '<div class="production-ops-dashboard">'
+    +'<div class="ops-card production-ops-unified">'
+      + buildProductionOpsToolbarHtml(pool, PRODUCTION_OPS_ACTIVE_ID)
+      +'<div class="prodops-summary-top">'
+        +'<div class="prodops-summary-title"><h3>'+escapeHtml(lead.client || 'Project')+'</h3><p>'+escapeHtml(lead.id)+' · PIC '+escapeHtml(lead.pic || '-')+' · '+escapeHtml(lead.category || '—')+'</p></div>'
+        +'<div class="prodops-badges">'
+          +'<span class="prodops-badge" style="background:'+badgeStatus.bg+';color:'+badgeStatus.color+';border-color:'+badgeStatus.border+'">'+escapeHtml(lead.status || 'Deal')+'</span>'
+          +'<span class="prodops-badge" style="background:'+stageCfg.bg+';color:'+stageCfg.color+';border-color:'+stageCfg.border+'">'+escapeHtml(summary.stage)+'</span>'
+        +'</div>'
+      +'</div>'
+      +'<div class="prodops-summary-grid">'
+        +'<div>'
+          + donutHtml
+          +'<div class="prodops-donut-meta">Rata-rata progress '+items.length+' folder Drive project. Stage client otomatis mengikuti akumulasi ini.</div>'
+        +'</div>'
+        +'<div class="prodops-bars">'+bars+'</div>'
+      +'</div>'
+      +'<div class="prodops-note">Update terakhir Production Ops: '+escapeHtml(lead.productionOpsUpdatedAt || lead.productionUpdatedAt || 'Belum ada')+(lead.productionOpsUpdatedBy ? ' · ' + escapeHtml(lead.productionOpsUpdatedBy) : '')+'. Catatan client: '+escapeHtml(lead.productionNotes || 'Belum ada catatan client.')+'</div>'
+    +'</div>'
+    +'<div class="ops-card prodops-dept-card-wrap">'
+      +'<section class="prodops-dept-section">'
+        +'<h3 class="prodops-dept-heading">Folder &amp; Detail Per Departemen</h3>'
+        +(items.length
+          ? '<div class="prodops-dept-scroll"><div class="prodops-dept-row">'+cards+'</div></div>'
+          : '<div class="prodops-empty">Belum ada folder Drive untuk project ini. Pastikan project sudah Deal dan folder Drive sudah dibuat.</div>')
+      +'</section>'
+    +'</div>'
+  +'</div>';
+  requestAnimationFrame(function() {
+    animateProdopsDonut(content);
+  });
+}
+
+function saveProductionOpsDepartment(projectId, departmentId) {
+  var lead = findProductionOpsLead(projectId);
+  if (!lead) return;
+  if (!getInternalPayKey()) {
+    showToast('Sesi Habis', 'Silakan login ulang ke Operation System.', 'warning');
+    return;
+  }
+  if (typeof canEditProductionOpsDepartment === 'function' && !canEditProductionOpsDepartment(departmentId)) {
+    showToast('Akses ditolak', 'PIC hanya boleh mengubah departemen sendiri.', 'warning');
+    return;
+  }
+  var sourceItems = getLeadProductionOpsItems(lead);
+  var lockedDept = sourceItems.find(function(item) { return item.id === departmentId; });
+  if (isProductionOpsDeptLockedClient(lockedDept)) {
+    showDeptLockedAlert(lockedDept, lead);
+    return;
+  }
+  if (lockedDept && String(lockedDept.approvalStatus || '').toUpperCase() === 'PENDING') {
+    showToast('Menunggu Validasi', 'Departemen ini sedang menunggu review Direktur.', 'warning');
+    return;
+  }
+  var items = sourceItems;
+  var notes = [];
+  items = items.map(function(item) {
+    var statusEl = document.getElementById('prodops-status-' + item.id);
+    var progressEl = document.getElementById('prodops-progress-' + item.id);
+    var picEl = document.getElementById('prodops-pic-' + item.id);
+    var noteEl = document.getElementById('prodops-note-' + item.id);
+    if (!statusEl || !progressEl || !picEl || !noteEl) return item;
+    var status = normalizeProductionOpsStatusClient(statusEl.value);
+    var progress = normalizeProductionOpsProgressClient(progressEl.value, status);
+    var nextItem = {
+      id: item.id,
+      label: item.label,
+      icon: item.icon,
+      pic: picEl.value.trim(),
+      status: status,
+      progress: progress,
+      note: noteEl.value.trim(),
+      updatedAt: item.id === departmentId ? new Date().toLocaleString('id-ID') : (item.updatedAt || ''),
+      approvalStatus: item.approvalStatus || '',
+      approvalId: item.approvalId || '',
+      reviewNotes: item.reviewNotes || '',
+      order: item.order
+    };
+    if (item.id === departmentId) {
+      notes.push(item.label + ' ' + progress + '% (' + status + ')');
+    }
+    return nextItem;
+  });
+
+  PRODUCTION_OPS_SAVING_ID = projectId + ':' + departmentId;
+  showLoading();
+  google.script.run
+    .withSuccessHandler(function(res) {
+      hideLoading();
+      PRODUCTION_OPS_SAVING_ID = '';
+      if (res && res.success) {
+        lead.productionOpsData = JSON.stringify(res.opsData || items);
+        lead.productionOpsUpdatedAt = res.opsUpdatedAt || lead.productionOpsUpdatedAt;
+        lead.productionOpsUpdatedBy = res.opsUpdatedBy || lead.productionOpsUpdatedBy;
+        if (res.deptFolders || res.catalog) {
+          storeOpsFolderCatalog(projectId, res.catalog || [], res.deptFolders || {});
+        }
+        if (res.production) {
+          lead.productionStage = res.production.stage || lead.productionStage;
+          lead.productionUpdatedAt = res.production.updatedAt || lead.productionUpdatedAt;
+          lead.productionUpdatedBy = res.production.updatedBy || lead.productionUpdatedBy;
+          lead.productionNotes = res.production.notes || lead.productionNotes;
+        }
+        delete PROJECT_TIMELINES[projectId];
+        PRODUCTION_OPS_EDITING_ID = '';
+        renderProductionOpsView();
+        if (projectDetailId && sameProjectIdClient(projectId, projectDetailId)) renderProjectDetail(projectDetailId, true);
+        if (typeof isDeptPicUser !== 'function' || !isDeptPicUser()) refreshPendingApprovals();
+        var mailNote = res.notification && res.notification.sent
+          ? ' Email client dikirim karena stage berubah.'
+          : ((res.notification && res.notification.reason) ? ' ' + res.notification.reason : '');
+        if (res.needsDirectorValidation && res.pendingDeptApproval) {
+          showDeptPendingAlert(res.pendingDeptApproval);
+        } else {
+          showToast('Production Ops Tersimpan', (notes[0] || 'Update departemen disimpan.') + '.' + mailNote);
+        }
+      } else {
+        renderProductionOpsView();
+        showToast('Gagal Update', (res && res.error) || 'Production Ops gagal disimpan.', 'warning');
+      }
+    })
+    .withFailureHandler(function(err) {
+      hideLoading();
+      PRODUCTION_OPS_SAVING_ID = '';
+      renderProductionOpsView();
+      showToast('Error', (err && err.message) || 'Gagal menghubungi server. Coba lagi atau refresh halaman.', 'warning');
+    })
+    .updateProductionOpsProgress(getInternalPayKey(), projectId, items, notes.join(' · '), departmentId);
+}
+
+function showDeptLockedAlert(dept, lead) {
+  dept = dept || {};
+  lead = lead || {};
+  var modal = document.getElementById('dept-locked-alert');
+  var sub = document.getElementById('dept-locked-alert-sub');
+  var details = document.getElementById('dept-locked-alert-details');
+  if (sub) {
+    sub.textContent = (dept.label || 'Departemen') + ' sudah tervalidasi 100% oleh Direktur. Form update terkunci dan tidak bisa diubah lagi.';
+  }
+  if (details) {
+    details.innerHTML = [
+      ['Project', lead.id || lead.client || '—'],
+      ['Departemen', dept.label || dept.id || '—'],
+      ['Progress', (dept.progress || 0) + '%'],
+      ['Status', dept.status || 'Done'],
+      ['PIC', dept.pic || '—']
+    ].map(function(row) {
+      return '<div class="am-row"><span>'+escapeHtml(row[0])+'</span><span>'+escapeHtml(String(row[1]))+'</span></div>';
+    }).join('');
+  }
+  if (modal) modal.classList.add('open');
+}
+
+function showDeptLockedAlertFromCard(deptId) {
+  var lead = findProductionOpsLead(PRODUCTION_OPS_ACTIVE_ID);
+  if (!lead) return;
+  var items = getLeadProductionOpsItems(lead);
+  var dept = items.find(function(item) { return item.id === deptId; });
+  if (!dept) return;
+  showDeptLockedAlert(dept, lead);
+}
+
+function closeDeptLockedAlert() {
+  var modal = document.getElementById('dept-locked-alert');
+  if (modal) modal.classList.remove('open');
+}
+
+function showDeptPendingAlert(approval) {
+  approval = approval || {};
+  var modal = document.getElementById('dept-pending-alert');
+  var sub = document.getElementById('dept-pending-alert-sub');
+  var details = document.getElementById('dept-pending-alert-details');
+  if (sub) {
+    sub.textContent = (approval.departmentLabel || 'Departemen')
+      + ' · pengajuan ' + (approval.progress != null ? approval.progress + '%' : 'progress')
+      + ' menunggu validasi Direktur sebelum disahkan.';
+  }
+  if (details) {
+    details.innerHTML = [
+      ['Project', approval.projectId || '—'],
+      ['Departemen', approval.departmentLabel || approval.departmentId || '—'],
+      ['Progress diajukan', (approval.progress != null ? approval.progress + '%' : '—')],
+      ['PIC', approval.pic || '—'],
+      ['Catatan', approval.notes || '—'],
+      ['Diajukan oleh', approval.submittedBy || '—'],
+      ['Waktu', approval.submittedAt || '—']
+    ].map(function(row) {
+      return '<div class="am-row"><span>'+escapeHtml(row[0])+'</span><span>'+escapeHtml(String(row[1]))+'</span></div>';
+    }).join('');
+  }
+  if (modal) modal.classList.add('open');
+}
+
+function closeDeptPendingAlert() {
+  var modal = document.getElementById('dept-pending-alert');
+  if (modal) modal.classList.remove('open');
+}
+
+function renderClientPortalDashboard(project) {
+  var wrap = document.getElementById('cp-dashboard-content');
+  if (!wrap) return;
+  if (!project) {
+    wrap.innerHTML = '';
+    return;
+  }
+  var production = project.production || {};
+  var ops = project.productionOps || {};
+  var departments = ops.departments || [];
+  var percent = typeof ops.overallPercent === 'number'
+    ? ops.overallPercent
+    : getClientProductionPercent(production);
+  percent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  var stageLabel = buildProductionStageLabel(ops.stage || production.stage) || 'On Discuss';
+  var doneCount = Number(ops.doneCount || 0);
+  var totalCount = Number(ops.totalCount || departments.length || 0);
+  var statusLabel = String(project.status || 'New Lead').trim() || 'Deal';
+  var clientName = String(project.clientName || CLIENT_PORTAL_STATE.name || 'Client').trim();
+  var picName = String(project.pic || production.pic || '').trim() || 'PIC FA Studio';
+  var updatedBy = String((ops.updatedBy || production.updatedBy || '')).trim() || 'fastudioindonesia@gmail.com';
+  var updatedAt = String(ops.updatedAt || production.updatedAt || '').trim();
+  var pay = getClientPaymentSummary(project);
+  var drive = getClientDriveSummary(project);
+  var paymentTitle = (typeof formatPaymentStatusLabel === 'function')
+    ? formatPaymentStatusLabel(pay.paymentLabel)
+    : String(pay.paymentLabel || 'UNPAID');
+  var dealDateShort = formatClientPortalDateShort(project.timestamp || ops.updatedAt || '');
+
+  var donutHtml = (typeof buildProdopsDonutHtml === 'function')
+    ? buildProdopsDonutHtml(percent, '#f59e0b', 'selesai')
+    : '<div class="prodops-donut"><div class="prodops-donut-inner"><strong>'+percent+'%</strong><span>selesai</span></div></div>';
+
+  var barsHtml = departments.map(function(item) {
+    var progress = Math.max(0, Math.min(100, Number(item.progress || 0)));
+    var theme = getClientPortalDeptTheme(item.id);
+    var icon = (typeof getProductionOpsDeptIconSvg === 'function') ? getProductionOpsDeptIconSvg(item.id) : '';
+    return '<div class="cp-ov-dept-row">'
+      + '<span class="cp-ov-dept-ico" style="background:'+theme.bg+';color:'+theme.color+'">'+icon+'</span>'
+      + '<span class="cp-ov-dept-name">'+escapeHtml(item.label || 'Departemen')+'</span>'
+      + buildClientGlassProgressBar(progress, theme.color)
+      + '<span class="cp-ov-dept-pct" style="color:'+theme.color+'">'+progress+'%</span>'
+    + '</div>';
+  }).join('');
+
+  var footNote = updatedAt
+    ? ('Update terakhir: ' + updatedAt + ' · ' + updatedBy + ' · Stage: ' + stageLabel)
+    : ('Belum ada update produksi dari tim FA · Stage: ' + stageLabel);
+
+  var paymentDone = !!drive.driveGate.paymentReady || pay.payPercent >= 100;
+  var productionDone = !!drive.driveGate.productionReady || percent >= 100;
+  var directorDone = productionDone || !!drive.driveUnlocked;
+  var remainPct = Math.max(0, 100 - pay.payPercent);
+
+  function reqRow(done, label) {
+    return '<div class="cp-ov-req'+(done ? ' is-done' : '')+'">'
+      + '<span class="cp-ov-req-ico" aria-hidden="true">'
+        + (done
+            ? '<svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>'
+            : '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6"/><path d="M9 9l6 6"/></svg>')
+      + '</span>'
+      + '<span>'+escapeHtml(label)+'</span>'
+    + '</div>';
+  }
+
+  var shootHtml = buildClientShootingScheduleHtml(project);
+  if (!shootHtml) {
+    shootHtml = ''
+      + '<section class="cp-ov-card cp-ov-glass-mid cp-ov-shoot-card cp-ov-enter" style="--enter-delay:.16s">'
+        + '<div class="cp-ov-shoot"><div class="cp-ov-shoot-copy">'
+          + '<span class="cp-ov-eyebrow">Jadwal Shooting</span>'
+          + '<h3 class="cp-ov-shoot-title">Belum dijadwalkan</h3>'
+          + '<p class="cp-ov-shoot-sub">Jadwal shooting akan muncul di sini setelah dikunci tim FA.</p>'
+        + '</div></div>'
+      + '</section>';
+  }
+
+  wrap.innerHTML = ''
+    + '<div class="cp-ov-stack">'
+      + buildClientNewLeadNoticeHtml(project)
+      + buildClientPortalGreetingBannerHtml(project)
+      + buildClientPortalQuickLinks('overview')
+
+      + '<section class="cp-ov-card cp-ov-glass-mid cp-ov-tracker cp-ov-enter" style="--enter-delay:.08s">'
+        + '<div class="cp-ov-tracker-head">'
+          + '<div>'
+            + '<span class="cp-ov-eyebrow">Production Tracker</span>'
+            + '<h3 class="cp-ov-card-title">Detail Tahapan Produksi</h3>'
+          + '</div>'
+          + '<span class="cp-ov-pill cp-ov-pill-cyan"><i aria-hidden="true"></i>'+escapeHtml(stageLabel)+'</span>'
+        + '</div>'
+        + '<div class="cp-ov-divider" aria-hidden="true"></div>'
+        + '<div class="cp-ov-tracker-body">'
+          + '<div class="cp-ov-donut-col">'
+            + donutHtml
+            + '<p class="cp-ov-donut-caption">'
+              + (totalCount ? (doneCount + ' dari ' + totalCount + ' tahapan selesai') : 'Belum ada tahapan produksi')
+            + '</p>'
+          + '</div>'
+          + '<div class="cp-ov-dept-list">'
+            + (barsHtml || '<p class="cp-ov-muted">Detail tahapan belum tersedia.</p>')
+          + '</div>'
+        + '</div>'
+        + '<div class="cp-ov-note">'+escapeHtml(footNote)+'</div>'
+      + '</section>'
+
+      + shootHtml
+
+      + '<div class="cp-ov-grid cp-ov-enter" style="--enter-delay:.28s">'
+        + '<section class="cp-ov-card cp-ov-glass-mid cp-ov-pay">'
+          + '<div class="cp-ov-side-head">'
+            + '<span class="cp-ov-side-ico is-amber" aria-hidden="true">'
+              + '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>'
+            + '</span>'
+            + '<div class="cp-ov-side-titles">'
+              + '<span class="cp-ov-eyebrow">Pembayaran</span>'
+              + '<h3 class="cp-ov-card-title">'+escapeHtml(paymentTitle)+'</h3>'
+            + '</div>'
+          + '</div>'
+          + '<div class="cp-ov-pay-body">'
+            + '<div class="cp-ov-pay-row"><span>Total Kesepakatan</span><strong>'+escapeHtml(pay.projectTotal)+'</strong></div>'
+            + '<div class="cp-ov-pay-row"><span>Terbayar</span><strong class="is-green">'+escapeHtml(pay.totalPaid)+'</strong></div>'
+            + '<div class="cp-ov-pay-remain">'
+              + '<span>Sisa Tagihan</span>'
+              + '<strong>'+escapeHtml(pay.remaining)+'</strong>'
+            + '</div>'
+            + '<div class="cp-ov-pay-bar" role="progressbar" aria-valuenow="'+pay.payPercent+'" aria-valuemin="0" aria-valuemax="100">'
+              + '<span style="width:'+pay.payPercent+'%"></span>'
+            + '</div>'
+            + '<div class="cp-ov-pay-meta">'
+              + '<span>'+pay.payPercent+'% terbayar</span>'
+              + '<span>'+remainPct+'% tersisa</span>'
+            + '</div>'
+            + '<button type="button" class="cp-ov-cta-dark" onclick="setClientPortalView(\'payment\')">'
+              + '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M2 10h20"/><path d="M6 14h2"/><path d="M12 14h2"/></svg>'
+              + 'Lihat Detail Pembayaran'
+            + '</button>'
+          + '</div>'
+        + '</section>'
+
+        + '<section class="cp-ov-card cp-ov-glass-dark cp-ov-access">'
+          + '<div class="cp-ov-access-head">'
+            + '<div class="cp-ov-blob cp-ov-blob-purple-sm" aria-hidden="true"></div>'
+            + '<div class="cp-ov-access-head-row">'
+              + '<span class="cp-ov-side-ico is-purple" aria-hidden="true">'
+                + '<svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+              + '</span>'
+              + '<div class="cp-ov-access-titles">'
+                + '<div class="cp-ov-side-titles">'
+                  + '<span class="cp-ov-eyebrow is-on-dark">Akses Hasil</span>'
+                  + '<h3 class="cp-ov-card-title is-on-dark">'+(drive.driveUnlocked ? 'Terbuka' : 'Terkunci')+'</h3>'
+                + '</div>'
+                + '<span class="cp-ov-pill cp-ov-pill-purple">'+(drive.driveUnlocked ? 'OPEN' : 'LOCKED')+'</span>'
+              + '</div>'
+            + '</div>'
+          + '</div>'
+          + '<div class="cp-ov-access-body">'
+            + '<p class="cp-ov-access-intro">'+(drive.driveUnlocked
+                ? 'Folder hasil sudah bisa dibuka.'
+                : 'Selesaikan syarat berikut untuk membuka akses:')+'</p>'
+            + reqRow(paymentDone, 'Pelunasan pembayaran')
+            + reqRow(directorDone, 'Validasi direktur')
+            + reqRow(productionDone, 'Selesai seluruh produksi')
+            + '<button type="button" class="cp-ov-cta-ghost" onclick="setClientPortalView(\'drive\')">'
+              + '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>'
+              + 'Cek Syarat Akses'
+            + '</button>'
+          + '</div>'
+        + '</section>'
+      + '</div>'
+
+      + '<p class="cp-ov-footer cp-ov-enter" style="--enter-delay:.34s">© FA Studio Indonesia · Portal Client</p>'
+    + '</div>';
+
+  if (typeof animateProdopsDonut === 'function') {
+    try { animateProdopsDonut(wrap); } catch (e) {}
+  }
+}
+
+function getClientPaymentSummary(project) {
+  project = project || {};
+  var driveGate = project.driveGate || {};
+  var paymentLabel = project.paymentStatus || 'UNPAID';
+  var paidRaw = Number(project.totalPaid || 0) || 0;
+  var totalRaw = Number(project.projectTotal || 0) || 0;
+  var remainingRaw = project.remainingAmount !== '' && project.remainingAmount != null
+    ? Number(project.remainingAmount) || 0
+    : (totalRaw > 0 ? Math.max(totalRaw - paidRaw, 0) : 0);
+  var payPercent = 0;
+  if (driveGate.paymentReady || String(paymentLabel).toUpperCase() === 'LUNAS') {
+    payPercent = 100;
+  } else if (totalRaw > 0) {
+    payPercent = Math.max(0, Math.min(100, Math.round((paidRaw / totalRaw) * 100)));
+  } else if (paidRaw > 0) {
+    payPercent = 100;
+  }
+  return {
+    paymentLabel: paymentLabel,
+    payPercent: payPercent,
+    paidRaw: paidRaw,
+    totalRaw: totalRaw,
+    remainingRaw: remainingRaw,
+    totalPaid: project.totalPaid != null ? formatRupiahNumber(project.totalPaid) : 'Rp 0',
+    projectTotal: project.projectTotal !== '' && project.projectTotal != null ? formatRupiahNumber(project.projectTotal) : '—',
+    remaining: project.remainingAmount !== '' && project.remainingAmount != null
+      ? formatRupiahNumber(project.remainingAmount)
+      : (totalRaw > 0 ? formatRupiahNumber(remainingRaw) : '—'),
+    invoiceNumber: String(project.invoiceNumber || '').trim(),
+    invoiceLink: safeExternalUrl(project.invoiceUrl),
+    invoiceSentAt: String(project.invoiceSentAt || '').trim(),
+    paymentReady: !!driveGate.paymentReady
+  };
+}
+
+
+function getClientDriveSummary(project) {
+  project = project || {};
+  var driveGate = project.driveGate || {};
+  var driveUnlocked = project.driveUnlocked === true;
+  var driveLink = driveUnlocked ? safeExternalUrl(project.driveUrl) : '';
+  var driveGateNote = project.driveGateNote || 'Folder Google Drive dibuka setelah Production Ops 100% selesai dan payment Lunas.';
+  var driveLockLabel = 'Drive terkunci';
+  if (!driveUnlocked) {
+    if (!driveGate.productionReady && !driveGate.paymentReady) {
+      driveLockLabel = 'Drive terkunci · produksi 100% + Lunas';
+    } else if (!driveGate.productionReady) {
+      driveLockLabel = 'Drive terkunci · menunggu produksi 100%';
+    } else if (!driveGate.paymentReady) {
+      driveLockLabel = 'Drive terkunci · menunggu payment Lunas';
+    }
+  }
+  var driveReadyCount = (driveGate.productionReady ? 1 : 0) + (driveGate.paymentReady ? 1 : 0);
+  return {
+    driveUnlocked: driveUnlocked,
+    driveLink: driveLink,
+    driveGate: driveGate,
+    driveGateNote: driveGateNote,
+    driveLockLabel: driveLockLabel,
+    driveReadyCount: driveReadyCount,
+    drivePercent: driveUnlocked ? 100 : Math.round((driveReadyCount / 2) * 100)
+  };
+}
+
+function renderClientPortalPaymentView(project) {
+  var wrap = document.getElementById('cp-dashboard-content');
+  if (!wrap || !project) return;
+  var pay = getClientPaymentSummary(project);
+  var paymentTitle = (typeof formatPaymentStatusLabel === 'function')
+    ? formatPaymentStatusLabel(pay.paymentLabel)
+    : String(pay.paymentLabel || 'UNPAID');
+  var nextHint = pay.paymentReady || pay.payPercent >= 100
+    ? 'Pembayaran sudah Lunas. Cek menu Akses Hasil untuk membuka folder.'
+    : (pay.payPercent > 0
+        ? 'Pembayaran sebagian sudah masuk. Lunasi sisa agar syarat akses hasil terpenuhi.'
+        : 'Belum ada pembayaran. Lunasi tagihan agar syarat akses hasil terpenuhi.');
+  var statusLabel = String(project.status || 'Deal').trim() || 'Deal';
+  var invoiceDate = formatClientPortalDateLong(pay.invoiceSentAt || project.timestamp || '');
+  var donutHtml = (typeof buildProdopsDonutHtml === 'function')
+    ? buildProdopsDonutHtml(pay.payPercent, '#22c55e', 'TERBAYAR', 'rgba(255,255,255,0.14)')
+    : '<div class="prodops-donut"><div class="prodops-donut-inner"><strong>'+pay.payPercent+'%</strong><span>TERBAYAR</span></div></div>';
+
+  wrap.innerHTML = ''
+    + '<div class="cp-ov-stack">'
+      + '<div class="cp-ov-enter" style="--enter-delay:.06s">'+buildClientPortalQuickLinks('payment')+'</div>'
+
+      + '<section class="cp-ov-card cp-ov-glass-dark cp-payv-hero cp-ov-enter" style="--enter-delay:.10s">'
+        + '<div class="cp-ov-blob cp-ov-blob-cyan" aria-hidden="true"></div>'
+        + '<div class="cp-payv-hero-row">'
+          + '<div class="cp-payv-hero-copy">'
+            + '<span class="cp-payv-badge">Status Pembayaran</span>'
+            + '<h3 class="cp-payv-hero-title">'+escapeHtml(paymentTitle)+'</h3>'
+            + '<p class="cp-payv-hero-sub">'+escapeHtml(nextHint)+'</p>'
+            + '<div class="cp-payv-metrics">'
+              + '<div><span>Total</span><strong>'+escapeHtml(pay.projectTotal)+'</strong></div>'
+              + '<div><span>Terbayar</span><strong class="is-green">'+escapeHtml(pay.totalPaid)+'</strong></div>'
+              + '<div><span>Sisa</span><strong class="is-amber">'+escapeHtml(pay.remaining)+'</strong></div>'
+            + '</div>'
+          + '</div>'
+          + '<div class="cp-payv-donut-wrap">'
+            + donutHtml
+            + '<div class="cp-payv-legend">'
+              + '<span><i class="is-green" aria-hidden="true"></i>Dibayar</span>'
+              + '<span><i class="is-amber" aria-hidden="true"></i>Sisa</span>'
+            + '</div>'
+          + '</div>'
+        + '</div>'
+      + '</section>'
+
+      + '<section class="cp-ov-card cp-ov-glass-mid cp-payv-progress cp-ov-enter" style="--enter-delay:.16s">'
+        + '<div class="cp-payv-progress-head">'
+          + '<span class="cp-ov-eyebrow cp-payv-progress-label">'
+            + '<svg class="cp-payv-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>'
+            + 'Progress Pembayaran'
+          + '</span>'
+          + '<span class="cp-payv-pct-pill">'+pay.payPercent+'%</span>'
+        + '</div>'
+        + '<div class="cp-payv-bar" role="progressbar" aria-valuenow="'+pay.payPercent+'" aria-valuemin="0" aria-valuemax="100">'
+          + '<span style="width:'+pay.payPercent+'%"></span>'
+        + '</div>'
+        + '<div class="cp-payv-progress-meta">'
+          + '<span class="is-green">'+escapeHtml(pay.totalPaid)+' dibayar</span>'
+          + '<span class="is-amber">Sisa '+escapeHtml(pay.remaining)+'</span>'
+        + '</div>'
+      + '</section>'
+
+      + '<div class="cp-payv-cards cp-ov-enter" style="--enter-delay:.22s">'
+        + '<div class="cp-ov-card cp-ov-glass-mid cp-payv-metric">'
+          + '<span class="cp-ov-eyebrow">Total Project</span>'
+          + '<strong>'+escapeHtml(pay.projectTotal)+'</strong>'
+          + '<em class="cp-payv-chip">'+escapeHtml(statusLabel)+'</em>'
+        + '</div>'
+        + '<div class="cp-ov-card cp-ov-glass-mid cp-payv-metric">'
+          + '<span class="cp-ov-eyebrow">Sudah Dibayar</span>'
+          + '<strong class="is-green">'+escapeHtml(pay.totalPaid)+'</strong>'
+          + '<em class="cp-payv-chip is-ok">'+(pay.paidRaw > 0 ? '✓ Terkonfirmasi' : 'Belum ada')+'</em>'
+        + '</div>'
+        + '<div class="cp-ov-card cp-ov-glass-mid cp-payv-metric">'
+          + '<span class="cp-ov-eyebrow">Sisa Tagihan</span>'
+          + '<strong class="is-amber">'+escapeHtml(pay.remaining)+'</strong>'
+          + '<em class="cp-payv-chip is-warn">'+(pay.paymentReady || pay.payPercent >= 100 ? 'Lunas' : 'Belum Lunas')+'</em>'
+        + '</div>'
+      + '</div>'
+
+      + '<section class="cp-ov-card cp-ov-glass-mid cp-payv-invoice cp-ov-enter" style="--enter-delay:.28s">'
+        + '<div class="cp-payv-invoice-top">'
+          + '<div class="cp-payv-invoice-left">'
+            + '<span class="cp-payv-doc" aria-hidden="true">'
+              + '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h6"/></svg>'
+            + '</span>'
+            + '<div>'
+              + '<span class="cp-ov-eyebrow">Invoice</span>'
+              + '<strong>'+(pay.invoiceNumber ? escapeHtml(pay.invoiceNumber) : 'Belum tersedia')+'</strong>'
+            + '</div>'
+          + '</div>'
+          + (invoiceDate ? '<span class="cp-payv-invoice-date">'+escapeHtml(invoiceDate)+'</span>' : '')
+        + '</div>'
+        + (pay.invoiceLink
+            ? '<a class="cp-ov-cta-dark cp-payv-invoice-btn" href="'+pay.invoiceLink+'" target="_blank" rel="noopener">'
+              + '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+              + 'Lihat Invoice'
+            + '</a>'
+            : '<span class="cp-ov-cta-dark cp-payv-invoice-btn is-disabled">Invoice belum tersedia</span>')
+      + '</section>'
+
+      + '<p class="cp-ov-footer cp-ov-enter" style="--enter-delay:.34s">© FA Studio Indonesia · Portal Client</p>'
+    + '</div>';
+
+  if (typeof animateProdopsDonut === 'function') {
+    try { animateProdopsDonut(wrap); } catch (e) {}
+  }
+}
+
+function getClientProductionProgressPercent(project) {
+  project = project || {};
+  var production = project.production || {};
+  var ops = project.productionOps || {};
+  if (typeof ops.overallPercent === 'number' && isFinite(ops.overallPercent)) {
+    return Math.max(0, Math.min(100, Math.round(ops.overallPercent)));
+  }
+  return getClientProductionPercent(production);
+}
+
+function buildClientGateProgressRow(opts) {
+  opts = opts || {};
+  var percent = Math.max(0, Math.min(100, Number(opts.percent || 0)));
+  var ready = !!opts.ready || percent >= 100;
+  var tone = ready ? 'ready' : (percent > 0 ? 'warn' : 'danger');
+  var statusLabel = ready ? (opts.readyLabel || 'Selesai') : (percent > 0 ? 'Progres' : 'Belum');
+  return ''
+    + '<div class="cp-gate-progress '+getClientStatusToneClass(tone)+(ready ? ' is-ready' : '')+'">'
+      + '<div class="cp-gate-progress-head">'
+        + '<div class="cp-gate-progress-title">'
+          + '<span class="cp-gate-progress-badge">'+escapeHtml(statusLabel)+'</span>'
+          + '<strong>'+escapeHtml(opts.title || '')+'</strong>'
+        + '</div>'
+        + '<em>'+percent+'%</em>'
+      + '</div>'
+      + '<div class="cp-mini-bar" role="progressbar" aria-valuenow="'+percent+'" aria-valuemin="0" aria-valuemax="100">'
+        + '<span style="width:'+percent+'%;background:'+getProgressHeatColor(percent)+'"></span>'
+      + '</div>'
+      + (opts.meta
+          ? '<div class="cp-mini-chart-meta"><span>'+escapeHtml(opts.meta)+'</span><span>'+(ready ? 'Terpenuhi' : 'Belum terpenuhi')+'</span></div>'
+          : '')
+    + '</div>';
+}
+
+function renderClientPortalDriveView(project) {
+  var wrap = document.getElementById('cp-dashboard-content');
+  if (!wrap || !project) return;
+  var drive = getClientDriveSummary(project);
+  var pay = getClientPaymentSummary(project);
+  var productionPercent = getClientProductionProgressPercent(project);
+  if (drive.driveGate.productionReady) productionPercent = 100;
+  if (drive.driveGate.paymentReady) pay.payPercent = 100;
+
+  var paymentDone = !!drive.driveGate.paymentReady || pay.payPercent >= 100;
+  var productionDone = !!drive.driveGate.productionReady || productionPercent >= 100;
+  var directorDone = productionDone || !!drive.driveUnlocked;
+  var reqs = [
+    { label: 'Pelunasan pembayaran', done: paymentDone },
+    { label: 'Validasi direktur', done: directorDone },
+    { label: 'Selesai seluruh produksi', done: productionDone }
+  ];
+  var doneCount = reqs.filter(function(r) { return r.done; }).length;
+  var unlocked = !!drive.driveUnlocked;
+  var contactName = String(CLIENT_PORTAL_STATE.name || 'client').trim() || 'client';
+  var projectName = String(project.clientName || '').trim();
+  var projectCode = String(project.projectId || '').trim();
+  var projectLabel = projectName && projectCode
+    ? (projectName + ' (' + projectCode + ')')
+    : (projectName || projectCode || 'project saya');
+  var contactHref = 'https://wa.me/6282174181369?text=' + encodeURIComponent(
+    'Halo FA Studio, saya ' + contactName
+      + '. Mau tanya soal syarat akses hasil project '
+      + projectLabel + '.'
+  );
+
+  function reqRowHtml(item, index) {
+    return ''
+      + '<div class="cp-drv-req'+(item.done ? ' is-done' : '')+'">'
+        + '<span class="cp-drv-num" aria-hidden="true">'+(index + 1)+'</span>'
+        + '<strong>'+escapeHtml(item.label)+'</strong>'
+        + '<em class="cp-drv-status">'+(item.done ? 'Selesai' : 'Belum')+'</em>'
+      + '</div>';
+  }
+
+  wrap.innerHTML = ''
+    + '<div class="cp-ov-stack">'
+      + '<div class="cp-ov-enter" style="--enter-delay:.06s">'+buildClientPortalQuickLinks('drive')+'</div>'
+
+      + '<section class="cp-ov-card cp-ov-glass-dark cp-drv-hero cp-ov-enter'+(unlocked ? ' is-open' : '')+'" style="--enter-delay:.10s">'
+        + '<div class="cp-ov-blob cp-ov-blob-purple" aria-hidden="true"></div>'
+        + '<div class="cp-drv-hero-row">'
+          + '<span class="cp-drv-lock'+(unlocked ? ' is-open' : '')+'" aria-hidden="true">'
+            + (unlocked
+                ? '<svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>'
+                : '<svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>')
+          + '</span>'
+          + '<div class="cp-drv-hero-copy">'
+            + '<span class="cp-drv-badge'+(unlocked ? ' is-open' : '')+'">'+(unlocked ? 'Akses Terbuka' : 'Akses Terkunci')+'</span>'
+            + '<h3 class="cp-drv-hero-title">'+(unlocked ? 'Hasil sudah bisa diakses' : 'Hasil belum bisa diakses')+'</h3>'
+            + '<p class="cp-drv-hero-sub">'+(unlocked
+                ? 'Folder hasil project kamu sudah terbuka. Silakan unduh file dari Google Drive.'
+                : 'Selesaikan semua syarat di bawah untuk membuka akses hasil project kamu.')+'</p>'
+            + (unlocked && drive.driveLink
+                ? '<a class="cp-ov-cta-dark cp-drv-open-btn" href="'+drive.driveLink+'" target="_blank" rel="noopener">'
+                  + '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg>'
+                  + 'Buka Folder Drive'
+                + '</a>'
+                : '')
+          + '</div>'
+        + '</div>'
+      + '</section>'
+
+      + '<section class="cp-ov-card cp-ov-glass-mid cp-drv-reqs cp-ov-enter" style="--enter-delay:.16s">'
+        + '<div class="cp-drv-reqs-head">'
+          + '<span class="cp-ov-eyebrow">Syarat Membuka Akses</span>'
+          + '<span class="cp-drv-count'+(doneCount >= reqs.length ? ' is-ok' : '')+'">'+doneCount+' / '+reqs.length+' terpenuhi</span>'
+        + '</div>'
+        + '<div class="cp-drv-req-list">'
+          + reqs.map(reqRowHtml).join('')
+        + '</div>'
+      + '</section>'
+
+      + '<section class="cp-ov-card cp-ov-glass cp-drv-help cp-ov-enter" style="--enter-delay:.22s">'
+        + '<div class="cp-drv-help-copy">'
+          + '<span class="cp-drv-help-ico" aria-hidden="true">'
+            + '<svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'
+          + '</span>'
+          + '<p>Hubungi tim FA Studio jika ada pertanyaan seputar syarat akses hasil.</p>'
+        + '</div>'
+        + '<a class="cp-drv-help-btn" href="'+escapeHtml(contactHref)+'" target="_blank" rel="noopener">Hubungi Tim FA</a>'
+      + '</section>'
+
+      + '<p class="cp-ov-footer cp-ov-enter" style="--enter-delay:.28s">© FA Studio Indonesia · Portal Client</p>'
+    + '</div>';
+}
+
+</script>

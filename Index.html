@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FA Studio Indonesia</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600;1,700;1,800&display=swap" rel="stylesheet"/>
+<?!= include("Styles"); ?>
+<?!= include("ThemeBoot"); ?>
+</head>
+<body>
+<?!= include("PartialsNav"); ?>
+<?!= include("PageHome"); ?>
+<?!= include("PartialsLgHeroPhoto"); ?>
+<?!= include("PartialsLgLogos"); ?>
+<?!= include("PageOps"); ?>
+<?!= include("PageResetPassword"); ?>
+<?!= include("PageGallery"); ?>
+<?!= include("PageAbout"); ?>
+<?!= include("PageBooking"); ?>
+<?!= include("PartialsOverlays"); ?>
+<?!= include("ScriptsCore"); ?>
+<?!= include("ScriptsBooking"); ?>
+<?!= include("ScriptsPortal"); ?>
+<?!= include("ScriptsOps"); ?>
+<?!= include("PartialsMobileNav"); ?>
+<script>
+var RECAPTCHA_SITE_KEY = <?!= JSON.stringify(getPublicRecaptchaSiteKey_()) ?>;
+window.onRecaptchaLoad = function() {
+  if (typeof onRecaptchaApiReady_ === 'function') onRecaptchaApiReady_();
+  else {
+    window._recaptchaApiReady = true;
+    if (typeof refreshLoginRecaptchaOnPageShow_ === 'function') refreshLoginRecaptchaOnPageShow_(true);
+    else if (typeof renderLoginRecaptcha === 'function') renderLoginRecaptcha(true);
+  }
+};
+</script>
+<? if (getPublicRecaptchaSiteKey_()) { ?>
+<script src="https://www.google.com/recaptcha/api.js?onload=onRecaptchaLoad&render=explicit" async defer></script>
+<? } ?>
+</body>
+</html>

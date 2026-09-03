@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FA Studio Indonesia</title>
+<meta name="description" content="FA Studio Indonesia — Yours Unlimited Creativity. Film, photo, and 3D production."/>
+<link rel="icon" href="assets/fa-app-icon.png" type="image/png" sizes="512x512"/>
+<link rel="apple-touch-icon" href="assets/fa-app-icon.png" sizes="180x180"/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600;1,700;1,800&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css"/>
+<script>
+(function () {
+  try { localStorage.removeItem('fa-theme'); } catch (e) {}
+  document.documentElement.removeAttribute('data-theme');
+})();
+</script>
+</head>
+<body class="public-site">
+<nav class="lg-nav" id="lg-nav" aria-label="Navigasi utama">
+  <button type="button" class="lg-logo" onclick="goPublicHome()" aria-label="FA Studio">
+    <span class="lg-logo-stack">
+      <img class="lg-logo-img lg-logo-img--black" data-lg-logo="black" alt="FA Studio" width="112" height="24" decoding="async"/>
+      <img class="lg-logo-img lg-logo-img--white" data-lg-logo="white" alt="" width="112" height="24" decoding="async" aria-hidden="true"/>
+    </span>
+  </button>
+
+  <div class="lg-nav-links">
+    <button type="button" id="lg-nav-home" onclick="setPage('home')">Home</button>
+    <button type="button" id="lg-nav-work" onclick="setPage('gallery')">Work</button>
+    <button type="button" id="lg-nav-services" onclick="lgNavToSection_('lg-services')">Services</button>
+    <button type="button" id="lg-nav-about" onclick="setPage('about')">About</button>
+  </div>
+
+  <div class="lg-nav-right">
+    <a class="lg-ig lg-nav-ig" href="https://www.instagram.com/fastudio.ind/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">◎</a>
+    <button type="button" class="lg-button lg-nav-cta lg-nav-cta--project" id="lg-nav-cta" onclick="openStartProject()">
+      <span class="lg-nav-cta-full">Create Project</span>
+      <span class="lg-nav-cta-short">Create Project</span>
+    </button>
+    <button type="button" class="lg-nav-cta lg-nav-cta--home" onclick="goPublicHome()" hidden>Kembali ke home</button>
+  </div>
+</nav>
+
+<div id="home" class="page active lg-landing">
+  <div class="lg-shell">
+
+    <section class="lg-hero" data-lg-chapter="01">
+      <div class="lg-hero-heading">
+        <div class="lg-hero-kicker">
+          <span class="lg-hero-kicker-dot"></span>
+          FA STUDIO INDONESIA
+          <span class="lg-hero-kicker-line"></span>
+          CREATIVE PRODUCTION
+        </div>
+
+        <div class="lg-hero-title-wrap">
+          <h1 class="lg-hero-title">
+            Yours
+            <br><span>Unlimited</span>
+            <br><strong class="lg-hero-creativity">Creativity</strong>
+          </h1>
+
+          <div class="lg-hero-side-copy">
+            <span class="lg-mini-index" id="lg-hero-index">01 / 04</span>
+            <p>
+              We turn ideas, people and moments
+              into visual stories that stay with you.
+            </p>
+            <button type="button" class="lg-hero-scroll" onclick="document.getElementById('lg-work').scrollIntoView({behavior:'smooth'})">
+              Scroll to explore <span>↓</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="lg-stage-scroll-wrap" id="lg-stage-wrap">
+        <div class="lg-hero-stage" id="lg-hero-stage">
+          <div class="lg-stage-image">
+            <img class="lg-stage-photo" data-lg-hero-stage alt="Behind the scenes — FA Studio production" decoding="async"/>
+            <div class="lg-stage-surface" aria-hidden="true"></div>
+            <div class="lg-stage-subject" aria-hidden="true">
+              <div class="lg-subject-head"></div>
+              <div class="lg-subject-body"></div>
+            </div>
+
+            <div class="lg-stage-topline">
+              <span>FA STUDIO / 2026</span>
+              <span>FILM — PHOTO — 3D</span>
+            </div>
+
+            <div class="lg-stage-caption">YOURS UNLIMITED CREATIVITY.</div>
+
+            <button type="button" class="lg-stage-play" aria-label="Play showreel" onclick="setPage('gallery')">
+              <span>▶</span>
+            </button>
+
+          </div>
+
+          <div class="lg-toast-layer" id="lg-toast-layer" aria-live="polite">
+            <aside class="lg-toast lg-toast--1" data-toast="0" aria-hidden="true">
+              <button type="button" class="lg-toast-dismiss" aria-label="Tutup notifikasi">×</button>
+              <div class="lg-toast-icon" aria-hidden="true">
+                <img data-lg-logo="icon" alt="" width="44" height="44" decoding="async"/>
+              </div>
+              <div class="lg-toast-content">
+                <div class="lg-toast-meta">
+                  <span class="lg-toast-app">Your Notifications</span>
+                  <span class="lg-toast-time"></span>
+                </div>
+                <div class="lg-toast-title"></div>
+                <p class="lg-toast-copy"></p>
+              </div>
+            </aside>
+            <aside class="lg-toast lg-toast--2" data-toast="1" aria-hidden="true">
+              <button type="button" class="lg-toast-dismiss" aria-label="Tutup notifikasi">×</button>
+              <div class="lg-toast-icon" aria-hidden="true">
+                <img data-lg-logo="icon" alt="" width="44" height="44" decoding="async"/>
+              </div>
+              <div class="lg-toast-content">
+                <div class="lg-toast-meta">
+                  <span class="lg-toast-app">Your Notifications</span>
+                  <span class="lg-toast-time"></span>
+                </div>
+                <div class="lg-toast-title"></div>
+                <p class="lg-toast-copy"></p>
+              </div>
+            </aside>
+            <aside class="lg-toast lg-toast--3" data-toast="2" aria-hidden="true">
+              <button type="button" class="lg-toast-dismiss" aria-label="Tutup notifikasi">×</button>
+              <div class="lg-toast-icon" aria-hidden="true">
+                <img data-lg-logo="icon" alt="" width="44" height="44" decoding="async"/>
+              </div>
+              <div class="lg-toast-content">
+                <div class="lg-toast-meta">
+                  <span class="lg-toast-app">Your Notifications</span>
+                  <span class="lg-toast-time"></span>
+                </div>
+                <div class="lg-toast-title"></div>
+                <p class="lg-toast-copy"></p>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="lg-about-scroll-wrap" id="lg-about-wrap">
+      <section class="lg-about lg-reveal" id="lg-about" data-lg-chapter="02">
+        <div class="lg-label">01 — ABOUT</div>
+        <div>
+          <h2 id="lg-about-heading">
+            Not just a production house.
+            We capture the feeling behind every frame.
+          </h2>
+          <p>
+            Berangkat dari passion terhadap visual dan storytelling,
+            FA Studio hadir untuk membantu brand, sekolah, organisasi,
+            dan personal mengabadikan momen melalui karya yang terasa dekat,
+            modern, dan memorable.
+          </p>
+        </div>
+      </section>
+    </div>
+
+    <section class="lg-services lg-reveal" id="lg-services" data-lg-chapter="03">
+      <div class="lg-section-head">
+        <div>
+          <div class="lg-label">02 — SERVICES</div>
+          <h2>What we do.</h2>
+        </div>
+        <div class="lg-section-note">
+          From the first idea<br>
+          to the final frame.
+        </div>
+      </div>
+
+      <div class="lg-service-grid" id="lg-service-grid"></div>
+    </section>
+
+    <section class="lg-work lg-reveal" id="lg-work" data-lg-chapter="04">
+      <div class="lg-section-head">
+        <div>
+          <div class="lg-label">03 — SELECTED WORK</div>
+          <h2>Stories we've made.</h2>
+        </div>
+        <a class="lg-button" href="https://www.instagram.com/fastudio.ind/" target="_blank" rel="noopener noreferrer">
+          View Instagram
+        </a>
+      </div>
+
+      <div class="lg-work-grid" id="lg-work-grid"></div>
+    </section>
+
+    <section class="lg-cta lg-reveal" id="lg-contact" data-lg-chapter="04">
+      <div class="lg-cta-glow" id="lg-cta-glow" aria-hidden="true"></div>
+      <div class="lg-cta-rings" aria-hidden="true">
+        <span class="lg-cta-ring lg-cta-ring-1"></span>
+        <span class="lg-cta-ring lg-cta-ring-2"></span>
+        <span class="lg-cta-ring lg-cta-ring-3"></span>
+        <span class="lg-cta-ring lg-cta-ring-4"></span>
+      </div>
+      <div class="lg-label">04 — LET'S WORK TOGETHER</div>
+      <h2>Got a story<br><em>worth telling?</em></h2>
+      <div class="lg-cta-stats" id="lg-cta-stats">
+        <div class="lg-cta-stat">
+          <span class="lg-cta-num" data-target="120">0</span><span class="lg-cta-plus">+</span>
+          <small>Projects delivered</small>
+        </div>
+        <div class="lg-cta-stat">
+          <span class="lg-cta-num" data-target="45">0</span><span class="lg-cta-plus">+</span>
+          <small>Happy clients</small>
+        </div>
+        <div class="lg-cta-stat">
+          <span class="lg-cta-num" data-stat="years" data-target="5">0</span>
+          <small>Years running</small>
+        </div>
+      </div>
+      <button type="button" class="lg-button lg-cta-btn" onclick="openStartProject()">Start a conversation</button>
+    </section>
+
+
+
+      <footer class="lg-footer">
+      <nav class="lg-footer-links" aria-label="Footer">
+        <button type="button" data-lg-footer-link="home" onclick="setPage('home')">Home</button>
+        <button type="button" data-lg-footer-link="gallery" onclick="setPage('gallery')">Work</button>
+        <button type="button" data-lg-footer-link="services" onclick="lgNavToSection_('lg-services')">Services</button>
+        <button type="button" data-lg-footer-link="about" onclick="setPage('about')">About</button>
+        <a href="https://www.instagram.com/fastudio.ind/" target="_blank" rel="noopener noreferrer">Instagram</a>
+        <button type="button" onclick="setPage('ops')">Sign In</button>
+      </nav>
+      <div class="lg-footer-copy">© 2026 FA Studio Indonesia</div>
+    </footer>
+
+</div>
+</div>
+<script src="config.js"></script>
+<script src="logos.js"></script>
+<script src="landing.js"></script>
+</body>
+</html>

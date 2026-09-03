@@ -1,0 +1,256 @@
+<div id="ops">
+  <div id="ops-access-gate" class="pay-access-gate" style="display:none;padding:24px 16px 40px">
+    <div class="ops-access-wrap">
+      <div class="ops-access-panel active" id="ops-login-panel">
+        <div class="lg-login">
+          <div class="lg-login-liquid lg-login-liquid-1" aria-hidden="true"></div>
+          <div class="lg-login-liquid lg-login-liquid-2" aria-hidden="true"></div>
+          <div class="lg-login-ring" aria-hidden="true"></div>
+          <div class="lg-login-env" aria-hidden="true">
+            <div class="lg-login-env-num">01 / LOGIN EXPERIENCE</div>
+            <h1>YOURS<br><span>UNLIMITED</span><br>CREATIVITY.</h1>
+            <div class="lg-login-env-micro">FA STUDIO INDONESIA · UNLIMITED CREATIVE POTENTIAL</div>
+          </div>
+          <div class="lg-login-reflection" aria-hidden="true"></div>
+
+          <header class="lg-login-hero-mobile" hidden>
+            <button type="button" class="lg-login-back" onclick="goPublicHome()" aria-label="Back to home">
+              <span class="lg-login-back-icon" aria-hidden="true">←</span>
+              <span>Back</span>
+            </button>
+            <h2 class="lg-login-hero-title" id="lg-login-hero-signin">Sign in</h2>
+            <h2 class="lg-login-hero-title" id="lg-login-hero-signup" hidden>Create an account</h2>
+          </header>
+
+          <main class="lg-login-main">
+            <section class="lg-login-card" aria-label="Authentication">
+              <div class="ops-auth-tabs">
+                <button type="button" class="ops-auth-tab active" id="auth-tab-signin" onclick="showAuthMode('signin')">Sign In</button>
+                <button type="button" class="ops-auth-tab" id="auth-tab-signup" onclick="showAuthMode('signup')">Sign Up</button>
+              </div>
+
+              <div id="ops-signin-form">
+                <div class="auth-head">
+                  <h3 class="auth-form-title">Back in the studio</h3>
+                  <p class="auth-form-sub">Pick up where your story left off.</p>
+                </div>
+                <div class="fg auth-fg auth-field--plain">
+                  <label class="auth-label auth-label--hide-mobile" for="ops-internal-email-input">Email</label>
+                  <input type="email" class="fc auth-fc" id="ops-internal-email-input" placeholder="Enter email" autocomplete="email" oninput="clearLoginPasswordError()" onkeydown="if(event.key==='Enter'){unlockOperationSystem();}"/>
+                </div>
+                <div class="fg auth-fg auth-field--plain">
+                  <label class="auth-label auth-label--hide-mobile" for="ops-internal-password-input">Password</label>
+                  <div class="auth-pass-wrap">
+                    <input type="password" class="fc auth-fc" id="ops-internal-password-input" placeholder="Password" autocomplete="current-password" oninput="clearLoginPasswordError()" onkeydown="if(event.key==='Enter'){unlockOperationSystem();}"/>
+                    <button type="button" class="auth-pass-toggle" onclick="toggleAuthPassword('ops-internal-password-input', this)" aria-label="Tampilkan password"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                  </div>
+                  <p class="auth-field-error" id="ops-login-password-error" hidden></p>
+                </div>
+                <div class="auth-forgot-row">
+                  <button type="button" class="auth-link" onclick="openResetPasswordPage()">Reset Password</button>
+                </div>
+                <div class="auth-recaptcha-row">
+                  <div id="login-recaptcha" class="auth-recaptcha" data-sitekey="<?!= getPublicRecaptchaSiteKey_() ?>"></div>
+                </div>
+                <button type="button" class="btn-signin" onclick="unlockOperationSystem()">Sign In</button>
+                <p class="auth-switch auth-switch--footer">Not a member? <button type="button" class="auth-link" onclick="showAuthMode('signup')">Register now</button></p>
+              </div>
+
+              <div id="ops-signup-form" style="display:none">
+                <div class="auth-head">
+                  <h3 class="auth-form-title">Start something new</h3>
+                  <p class="auth-form-sub">Create your account and follow every frame of your project.</p>
+                </div>
+                <div class="fg auth-fg auth-field--stack">
+                  <label class="auth-label" for="ops-signup-name">Nama lengkap</label>
+                  <input type="text" class="fc auth-fc" id="ops-signup-name" placeholder="Nama lengkap" autocomplete="name"/>
+                </div>
+                <div class="fg auth-fg auth-field--stack auth-field--otp">
+                  <label class="auth-label" for="ops-signup-email">Email</label>
+                  <div class="email-otp-row">
+                    <input type="email" class="fc auth-fc" id="ops-signup-email" placeholder="email@kamu.com" oninput="resetSignupOtpState()" autocomplete="email"/>
+                    <button type="button" class="btn-otp btn-otp-send" id="btn-send-signup-otp" onclick="sendSignupEmailOtp()">Kirim OTP</button>
+                  </div>
+                  <div class="lead-ts lg-login-hint">Kode berlaku 5 menit. Cek folder Spam jika tidak masuk.</div>
+                  <div class="email-otp-verify">
+                    <input type="text" class="fc otp-input auth-fc" id="ops-signup-otp" placeholder="000000" maxlength="6" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,6)"/>
+                    <button type="button" class="btn-otp btn-otp-verify" id="btn-verify-signup-otp" onclick="verifySignupEmailOtp()">Verifikasi</button>
+                  </div>
+                  <div class="otp-status warn" id="signup-otp-status">Email belum diverifikasi.</div>
+                </div>
+                <div class="fg auth-fg auth-field--stack">
+                  <label class="auth-label" for="ops-signup-password">Password</label>
+                  <div class="auth-pass-wrap">
+                    <input type="password" class="fc auth-fc" id="ops-signup-password" placeholder="Huruf, angka, dan simbol" autocomplete="new-password" onkeydown="if(event.key==='Enter'){submitClientSignUp();}"/>
+                    <button type="button" class="auth-pass-toggle" onclick="toggleAuthPassword('ops-signup-password', this)" aria-label="Tampilkan password"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                  </div>
+                  <p class="auth-hint">Minimal 8 karakter, campur huruf, angka, dan simbol.</p>
+                </div>
+                <label class="auth-agree-row">
+                  <input type="checkbox" id="ops-signup-pdp" autocomplete="off" onclick="onPdpCheckboxClick(event,'signup')"/>
+                  <span>Saya menyetujui syarat dan ketentuan</span>
+                </label>
+                <button type="button" class="btn-signin" onclick="submitClientSignUp()">Create account</button>
+                <p class="auth-switch auth-switch--footer">Already have an account? <button type="button" class="auth-link" onclick="showAuthMode('signin')">Sign in</button></p>
+              </div>
+            </section>
+          </main>
+
+          <div class="lg-login-meta">
+            <span>© 2026 FA Studio Indonesia</span>
+            <span><strong>WHERE GREAT VISUALS COME TO LIFE</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ops-access-panel" id="ops-client-access-panel">
+        <div class="client-portal-shell" id="cp-dashboard-card">
+          <aside class="cp-sidebar">
+            <div class="sb-rail-top">
+              <button type="button" class="sb-logo-card sb-hamburger-btn" id="cp-sidebar-toggle" onclick="toggleCpSidebar(undefined, event)" title="Buka/tutup sidebar" aria-label="Buka/tutup sidebar" aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+              </button>
+              <div class="sb-rail-divider" aria-hidden="true"></div>
+              <div class="cp-sidebar-user" id="cp-sidebar-user"></div>
+              <div class="sb-group">
+                <div class="sb-group-lbl">Menu</div>
+                <button type="button" class="sb-item active" id="cp-nav-overview" onclick="setClientPortalView('overview')" title="Production Tracker">
+                  <span class="sb-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+                  <span class="sb-label">Production Tracker</span>
+                </button>
+                <button type="button" class="sb-item" id="cp-nav-payment" onclick="setClientPortalView('payment')" title="Pembayaran">
+                  <span class="sb-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg></span>
+                  <span class="sb-label">Pembayaran</span>
+                </button>
+                <button type="button" class="sb-item" id="cp-nav-drive" onclick="setClientPortalView('drive')" title="Akses Hasil">
+                  <span class="sb-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+                  <span class="sb-label">Akses Hasil</span>
+                </button>
+              </div>
+            </div>
+            <div class="sb-rail-foot cp-sidebar-foot">
+              <button type="button" class="sb-item sb-logout btn-logout" onclick="logoutOperationSystem()" title="Keluar">
+                <span class="sb-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg></span>
+                <span class="sb-label">Keluar</span>
+              </button>
+            </div>
+          </aside>
+          <div class="cp-main">
+            <div class="cp-main-body" id="cp-dashboard-content"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="ops-sidebar" id="ops-sidebar-nav">
+    <div class="sb-rail-top">
+      <button type="button" class="sb-logo-card sb-hamburger-btn ops-sidebar-menu" id="ops-sidebar-toggle" onclick="toggleOpsSidebar()" title="Buka/tutup sidebar" aria-label="Buka/tutup sidebar" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div class="sb-rail-divider" aria-hidden="true"></div>
+      <div class="sb-group" id="sb-group-internal">
+        <div class="sb-group-lbl">Internal Acces</div>
+        <button class="sb-item active" id="sb-analytics" onclick="setView('analytics')" title="Dashboard Analytics">
+          <span class="sb-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 17V11"/><path d="M12 17V7"/><path d="M16 17v-4"/></svg></span>
+          <span class="sb-label">Dashboard Analytics</span>
+        </button>
+        <button class="sb-item" id="sb-internal-db" onclick="setView('internal-db')" title="Client Status">
+          <span class="sb-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+          <span class="sb-label">Client Status</span>
+        </button>
+        <button class="sb-item" id="sb-doc-gen" onclick="setView('doc-gen')" title="Billing & Invoices">
+          <span class="sb-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg></span>
+          <span class="sb-label">Billing & Invoices</span>
+        </button>
+      </div>
+      <div class="sb-group" id="sb-group-technical">
+        <div class="sb-group-lbl">Technical Acces</div>
+        <button class="sb-item" id="sb-production-ops" onclick="setView('production-ops')" title="Production Ops">
+          <span class="sb-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M10 9l6 3-6 3V9z"/></svg></span>
+          <span class="sb-label">Production Ops</span>
+        </button>
+      </div>
+      <div class="sb-group" id="sb-group-admin" style="display:none">
+        <div class="sb-group-lbl">Administrator</div>
+        <button class="sb-item" id="sb-users" onclick="setView('users')" title="Manage Users">
+          <span class="sb-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg></span>
+          <span class="sb-label">Manage Users</span>
+        </button>
+      </div>
+    </div>
+    <div class="sb-rail-foot">
+      <button type="button" class="sb-item sb-logout" onclick="logoutOperationSystem()" title="Keluar">
+        <span class="sb-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg></span>
+        <span class="sb-label">Keluar</span>
+      </button>
+    </div>
+  </div>
+  <div class="ops-main">
+    <div class="ops-header">
+      <div class="ops-header-top">
+        <div class="ops-mobile-brand">
+          <button type="button" class="sb-logo-card sb-hamburger-btn ops-header-menu" id="ops-header-menu" onclick="toggleOpsSidebar()" title="Buka menu" aria-label="Buka menu" aria-expanded="false" aria-controls="ops-sidebar-nav">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <button type="button" class="ops-header-logo" onclick="goPublicHome()" aria-label="FA Studio">
+            <img data-lg-logo="black" alt="FA Studio" width="98" height="20" decoding="async"/>
+          </button>
+        </div>
+      </div>
+      <div class="ops-header-left">
+        <div class="ops-header-copy">
+          <h2 id="ops-title">Dashboard Analytics</h2>
+          <p id="ops-subtitle">Ringkasan prioritas, pipeline, dan cashflow tim FA.</p>
+        </div>
+      </div>
+      <div class="ops-header-actions">
+        <div class="ops-stats-pill" id="ops-stats-pill">
+          <span>Revenue collected: <strong id="an-hdr-revenue">Rp 0</strong></span>
+          <span class="ops-stats-div" aria-hidden="true"></span>
+          <span>Outstanding: <strong id="an-hdr-outstanding">Rp 0</strong></span>
+        </div>
+        <div class="approval-bell-wrap" id="approval-bell-wrap" style="display:none">
+          <button type="button" class="approval-bell-btn ops-icon-btn" id="approval-bell-btn" onclick="toggleApprovalDropdown(event)" title="Inbox aksi Enterprise Operation" aria-label="Inbox aksi">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.5 5.5 1.5 5.5H4.5S6 13.7 6 9.5Z"/>
+              <path d="M10 18.5a2 2 0 0 0 4 0"/>
+            </svg>
+            <span class="approval-bell-badge" id="approval-bell-badge">0</span>
+          </button>
+          <div class="approval-dropdown" id="approval-dropdown" role="menu">
+            <div class="approval-dd-head">
+              <strong>Notifikasi</strong>
+              <span id="approval-dd-count">0 perlu ditindak</span>
+            </div>
+            <div class="approval-dd-tabs" role="tablist">
+              <button type="button" class="approval-dd-tab active" id="inbox-tab-action" onclick="setInboxTab('action',event)">Aksi</button>
+              <button type="button" class="approval-dd-tab" id="inbox-tab-info" onclick="setInboxTab('info',event)">Info</button>
+              <button type="button" class="approval-dd-tab" id="inbox-tab-done" onclick="setInboxTab('done',event)">Selesai</button>
+            </div>
+            <div class="approval-dd-list" id="approval-dd-list"><div class="approval-dd-empty">Tidak ada notifikasi aksi.</div></div>
+          </div>
+        </div>
+        <div class="admin-profile" id="admin-profile" style="display:none">
+          <div class="admin-avatar" id="admin-avatar">A</div>
+          <div class="admin-meta">
+            <div class="admin-name" id="admin-name">Admin</div>
+            <div class="admin-role" id="admin-role">INTERNAL</div>
+          </div>
+        </div>
+        <button type="button" class="ops-refresh-cta ops-refresh-cta--text" onclick="refreshAnalyticsData()">Refresh</button>
+        <button type="button" class="ops-refresh-cta ops-refresh-cta--icon" id="analytics-refresh-btn" onclick="refreshAnalyticsData()" title="Refresh data" aria-label="Refresh data">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="ops-content">
+
+<?!= include("ViewAnalytics"); ?>
+<?!= include("ViewClientStatus"); ?>
+<?!= include("ViewBilling"); ?>
+<?!= include("ViewUsers"); ?>
+<?!= include("ViewProductionOps"); ?>
+    </div>
+    <div class="app-copyright ops-footer-copyright">Copyright &copy; 2026 FA Studio Indonesia. All Rights Reserved.</div>
+  </div>
+</div>

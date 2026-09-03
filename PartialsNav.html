@@ -1,0 +1,24 @@
+<nav class="lg-nav" id="lg-nav" aria-label="Navigasi utama">
+  <button type="button" class="lg-logo" onclick="goPublicHome()" aria-label="FA Studio">
+    <span class="lg-logo-stack">
+      <img class="lg-logo-img lg-logo-img--black" data-lg-logo="black" alt="FA Studio" width="112" height="24" decoding="async"/>
+      <img class="lg-logo-img lg-logo-img--white" data-lg-logo="white" alt="" width="112" height="24" decoding="async" aria-hidden="true"/>
+    </span>
+  </button>
+
+  <div class="lg-nav-links">
+    <button type="button" id="lg-nav-home" onclick="setPage('home')">Home</button>
+    <button type="button" id="lg-nav-work" onclick="setPage('gallery')">Work</button>
+    <button type="button" id="lg-nav-services" onclick="lgNavToSection_('lg-services')">Services</button>
+    <button type="button" id="lg-nav-about" onclick="setPage('about')">About</button>
+  </div>
+
+  <div class="lg-nav-right">
+    <a class="lg-ig lg-nav-ig" href="https://www.instagram.com/fastudio.ind/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">◎</a>
+    <button type="button" class="lg-button lg-nav-cta lg-nav-cta--project" id="lg-nav-cta" onclick="openStartProject()">
+      <span class="lg-nav-cta-full">Create Project</span>
+      <span class="lg-nav-cta-short">Create Project</span>
+    </button>
+    <button type="button" class="lg-nav-cta lg-nav-cta--home" onclick="goPublicHome()" hidden>Kembali ke home</button>
+  </div>
+</nav>

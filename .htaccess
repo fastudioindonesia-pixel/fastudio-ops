@@ -1,0 +1,5 @@
+# Block public HTTP access to Apps Script backend / secrets.
+# Production UI is served by Google HtmlService (Index.html only) — not these files.
+<FilesMatch "(?i)^(Kode\.(js|gs)|appsscript\.json|\.clasp\.json|logo\.b64)$">
+  Require all denied
+</FilesMatch>

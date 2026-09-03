@@ -1,0 +1,59 @@
+      <div class="ops-view" id="view-internal-db">
+        <div class="ops-card project-detail" id="project-detail-card">
+          <div id="project-detail-content"></div>
+        </div>
+
+        <div class="cs-status-bar glass-enter" id="stats-bar" style="--enter-delay:0s"></div>
+
+        <div class="cs-toolbar glass-enter" style="--enter-delay:.08s">
+          <div class="cs-search">
+            <span class="cs-search-ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            </span>
+            <input type="text" id="search-input" placeholder="Cari client, ID, atau kategori..." oninput="renderLeads()"/>
+          </div>
+          <div class="cs-filter-pill">
+            <select id="filter-status" onchange="onClientStatusFilterChange()" aria-label="Filter status">
+              <option value="All">Semua Status</option>
+              <option value="New Lead">New Lead</option>
+              <option value="Deal">Deal</option>
+              <option value="In-Production">In-Production</option>
+              <option value="Done">Done</option>
+              <option value="On Hold">On Hold</option>
+            </select>
+            <span class="cs-filter-chevron" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+            </span>
+          </div>
+          <div class="cs-sync-pill" id="sync-info-pill">
+            <span class="cs-sync-dot" aria-hidden="true"></span>
+            <span id="sync-info">Sinkron —</span>
+          </div>
+          <button type="button" class="cs-sync-btn" id="sync-btn" onclick="syncSheets()">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 0-15.5-6.4"/><path d="M3 4v5h5"/><path d="M3 12a9 9 0 0 0 15.5 6.4"/><path d="M21 20v-5h-5"/></svg>
+            <span>Sync</span>
+          </button>
+        </div>
+
+        <div id="leads-body" class="cs-card-grid glass-enter" style="--enter-delay:.14s"></div>
+
+        <div class="cs-footer">
+          <p id="leads-count">—</p>
+        </div>
+
+        <div class="pd-log-overlay" id="pd-log-overlay" onclick="if(event.target===this)closeActivityLogGate()">
+          <div class="pd-log-modal" role="dialog" aria-modal="true" aria-labelledby="pd-log-title">
+            <div class="pd-log-modal-head">
+              <div>
+                <div class="pd-log-kicker">Activity Log</div>
+                <h3 id="pd-log-title">Riwayat project</h3>
+                <p id="pd-log-subtitle">Log dimuat on-demand saat gate dibuka.</p>
+              </div>
+              <button type="button" class="pd-btn pd-btn-ghost" onclick="closeActivityLogGate()">Tutup</button>
+            </div>
+            <div class="pd-log-modal-body" id="pd-log-body">
+              <div class="pd-log-empty">Belum ada log yang dimuat.</div>
+            </div>
+          </div>
+        </div>
+      </div>

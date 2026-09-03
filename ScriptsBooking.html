@@ -1,0 +1,735 @@
+<script>
+function selectBookingOption(el) {
+  var group = el.getAttribute('data-group');
+  var value = el.getAttribute('data-value');
+  document.querySelectorAll('.option-card[data-group="'+group+'"]').forEach(function(card) {
+    card.classList.remove('active');
+  });
+  el.classList.add('active');
+  if (group === 'service') {
+    BOOKING_STATE.serviceType = value;
+    if (value === BOOKING_SERVICE_YEARBOOK) {
+      toggleYearbookPackPanel(true);
+      toggleTotalMuridField(true);
+    } else {
+      BOOKING_STATE.yearbookPack = '';
+      toggleYearbookPackPanel(false);
+      toggleTotalMuridField(false);
+      document.querySelectorAll('.option-card[data-group="yearbook-pack"]').forEach(function(card) {
+        card.classList.remove('active');
+      });
+    }
+  }
+  if (group === 'yearbook-pack') BOOKING_STATE.yearbookPack = value;
+}
+
+function toggleYearbookPackPanel(show) {
+  var panel = document.getElementById('yearbook-pack-panel');
+  if (panel) panel.style.display = show ? 'block' : 'none';
+}
+
+function toggleTotalMuridField(show) {
+  var field = document.getElementById('yearbook-student-count-field');
+  if (field) field.style.display = show ? 'block' : 'none';
+  if (!show) {
+    var input = document.getElementById('f-total-murid');
+    if (input) input.value = '';
+  }
+}
+
+function isYearbookService() {
+  return BOOKING_STATE.serviceType === BOOKING_SERVICE_YEARBOOK;
+}
+
+function getBookingServiceLabel() {
+  var service = BOOKING_STATE.serviceType || '';
+  if (service === BOOKING_SERVICE_YEARBOOK && BOOKING_STATE.yearbookPack) {
+    return service + ' · ' + BOOKING_STATE.yearbookPack;
+  }
+  return service;
+}
+
+function resetBookingServiceSelection() {
+  BOOKING_STATE.serviceType = '';
+  BOOKING_STATE.yearbookPack = '';
+  document.querySelectorAll('.option-card[data-group="service"], .option-card[data-group="yearbook-pack"]').forEach(function(card) {
+    card.classList.remove('active');
+  });
+  toggleYearbookPackPanel(false);
+  toggleTotalMuridField(false);
+}
+
+var SHOOTING_DAY_NAMES = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+var SHOOTING_MONTH_NAMES = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+
+function padDatePart(value) {
+  return String(value).length < 2 ? '0' + value : String(value);
+}
+
+function toIsoDateLocal(date) {
+  if (!date || isNaN(date.getTime())) return '';
+  return date.getFullYear() + '-' + padDatePart(date.getMonth() + 1) + '-' + padDatePart(date.getDate());
+}
+
+function todayIsoLocal() {
+  return toIsoDateLocal(new Date());
+}
+
+function parseIsoDateLocal(iso) {
+  var match = String(iso || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  var year = Number(match[1]);
+  var month = Number(match[2]);
+  var day = Number(match[3]);
+  var date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return date;
+}
+
+function addDaysIso(iso, days) {
+  var date = parseIsoDateLocal(iso);
+  if (!date) return '';
+  date.setDate(date.getDate() + Number(days || 0));
+  return toIsoDateLocal(date);
+}
+
+function formatIdLongDate(iso) {
+  var date = parseIsoDateLocal(iso);
+  if (!date) return '';
+  return SHOOTING_DAY_NAMES[date.getDay()] + ', ' + date.getDate() + ' ' + SHOOTING_MONTH_NAMES[date.getMonth()] + ' ' + date.getFullYear();
+}
+
+function formatShootingDateLabel(startIso, days) {
+  days = Number(days || 0);
+  var startLabel = formatIdLongDate(startIso);
+  if (!startLabel || days < 1) return '';
+  if (days === 1) return startLabel + ' (1 hari)';
+  var endLabel = formatIdLongDate(addDaysIso(startIso, days - 1));
+  return startLabel + ' – ' + endLabel + ' (' + days + ' hari)';
+}
+
+function initShootingDaysSelect() {
+  var sel = document.getElementById('f-shooting-days');
+  if (!sel || sel.getAttribute('data-ready') === '1') return;
+  var html = '<option value="">Pilih durasi (1–30 hari)</option>';
+  for (var i = 1; i <= 30; i++) {
+    html += '<option value="'+i+'">'+i+' hari</option>';
+  }
+  sel.innerHTML = html;
+  sel.setAttribute('data-ready', '1');
+}
+
+// Ketersediaan tanggal shooting: diambil sekali per sesi (lazy, saat modal dibuka)
+// lalu dipakai ulang dari memori supaya kalender tidak menembak server tiap render.
+var SHOOTING_CALENDAR_STATE = {
+  bookedDates: {},
+  loaded: false,
+  loading: false,
+  fetchedAt: 0,
+  monthCursor: ''
+};
+var SHOOTING_AVAILABILITY_TTL_MS = 300000;
+
+function monthKeyFromIso(iso) {
+  return String(iso || '').slice(0, 7);
+}
+
+function isShootingDateBooked(iso) {
+  return !!SHOOTING_CALENDAR_STATE.bookedDates[iso];
+}
+
+/** Rentang dianggap bentrok kalau salah satu harinya sudah dibooking. */
+function shootingRangeHasConflict(startIso, days) {
+  days = Number(days || 0);
+  if (!startIso || days < 1) return false;
+  for (var i = 0; i < days; i++) {
+    if (isShootingDateBooked(addDaysIso(startIso, i))) return true;
+  }
+  return false;
+}
+
+function loadShootingAvailability(force) {
+  var state = SHOOTING_CALENDAR_STATE;
+  var fresh = state.loaded && (Date.now() - state.fetchedAt) < SHOOTING_AVAILABILITY_TTL_MS;
+  if (state.loading || (fresh && !force)) return;
+  if (typeof google === 'undefined' || !google.script || !google.script.run) return;
+  var accessKey = (typeof getInternalPayKey === 'function') ? getInternalPayKey() : '';
+  if (!accessKey) return;
+  state.loading = true;
+  renderShootingCalendar();
+  google.script.run
+    .withSuccessHandler(function(res) {
+      state.loading = false;
+      if (res && res.success) {
+        var map = {};
+        (res.bookedDates || []).forEach(function(iso) { map[iso] = true; });
+        state.bookedDates = map;
+        state.loaded = true;
+        state.fetchedAt = Date.now();
+        dropShootingSelectionIfConflict();
+      }
+      renderShootingCalendar();
+    })
+    .withFailureHandler(function() {
+      state.loading = false;
+      renderShootingCalendar();
+    })
+    .getShootingAvailability(accessKey);
+}
+
+function markShootingDatesTaken(dates) {
+  (dates || []).forEach(function(iso) {
+    if (iso) SHOOTING_CALENDAR_STATE.bookedDates[iso] = true;
+  });
+  renderShootingCalendar();
+}
+
+/** Pilihan yang jadi bentrok (data baru masuk / durasi berubah) dibatalkan. */
+function dropShootingSelectionIfConflict() {
+  var startEl = document.getElementById('f-shooting-start');
+  var daysEl = document.getElementById('f-shooting-days');
+  if (!startEl || !startEl.value) return;
+  var days = Number(daysEl && daysEl.value ? daysEl.value : 0);
+  if (!shootingRangeHasConflict(startEl.value, days)) return;
+  startEl.value = '';
+  updateShootingDatePreview();
+  if (typeof showToast === 'function') {
+    showToast('Tanggal Tidak Tersedia', 'Tanggal itu sudah dibooking project lain. Silakan pilih tanggal lain.', 'warning');
+  }
+}
+
+function resetShootingScheduleFields() {
+  var daysEl = document.getElementById('f-shooting-days');
+  var startEl = document.getElementById('f-shooting-start');
+  if (daysEl) daysEl.value = '';
+  if (startEl) startEl.value = '';
+  SHOOTING_CALENDAR_STATE.monthCursor = '';
+  onShootingDaysChange();
+}
+
+function onShootingDaysChange() {
+  var daysEl = document.getElementById('f-shooting-days');
+  var field = document.getElementById('shooting-date-field');
+  var startEl = document.getElementById('f-shooting-start');
+  var label = document.getElementById('shooting-date-label');
+  var days = Number(daysEl && daysEl.value ? daysEl.value : 0);
+  var active = days >= 1 && days <= 30;
+  if (field) field.style.display = active ? 'block' : 'none';
+  if (label) label.textContent = days > 1 ? 'Tanggal mulai shooting' : 'Tanggal shooting';
+  if (startEl && !active) startEl.value = '';
+  if (active) {
+    dropShootingSelectionIfConflict();
+    loadShootingAvailability(false);
+    renderShootingCalendar();
+  }
+  updateShootingDatePreview();
+}
+
+function selectShootingDate(iso) {
+  var startEl = document.getElementById('f-shooting-start');
+  if (!startEl) return;
+  startEl.value = iso;
+  SHOOTING_CALENDAR_STATE.monthCursor = monthKeyFromIso(iso);
+  renderShootingCalendar();
+  updateShootingDatePreview();
+}
+
+function moveShootingMonth(step) {
+  var cursor = getShootingMonthCursor();
+  var year = Number(cursor.slice(0, 4));
+  var month = Number(cursor.slice(5, 7)) - 1 + Number(step || 0);
+  var next = new Date(year, month, 1);
+  var nextKey = monthKeyFromIso(toIsoDateLocal(next));
+  if (nextKey < monthKeyFromIso(todayIsoLocal())) return;
+  SHOOTING_CALENDAR_STATE.monthCursor = nextKey;
+  renderShootingCalendar();
+}
+
+function getShootingMonthCursor() {
+  var startEl = document.getElementById('f-shooting-start');
+  var selected = startEl ? String(startEl.value || '') : '';
+  return SHOOTING_CALENDAR_STATE.monthCursor
+    || monthKeyFromIso(selected)
+    || monthKeyFromIso(todayIsoLocal());
+}
+
+function renderShootingCalendar() {
+  var host = document.getElementById('shooting-calendar');
+  if (!host) return;
+  var daysEl = document.getElementById('f-shooting-days');
+  var startEl = document.getElementById('f-shooting-start');
+  var days = Number(daysEl && daysEl.value ? daysEl.value : 0);
+  if (days < 1 || days > 30) { host.innerHTML = ''; return; }
+
+  var cursor = getShootingMonthCursor();
+  SHOOTING_CALENDAR_STATE.monthCursor = cursor;
+  var year = Number(cursor.slice(0, 4));
+  var monthIdx = Number(cursor.slice(5, 7)) - 1;
+  var todayIso = todayIsoLocal();
+  var selected = startEl ? String(startEl.value || '') : '';
+  var firstWeekday = new Date(year, monthIdx, 1).getDay();
+  var daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+  var atFirstMonth = cursor <= monthKeyFromIso(todayIso);
+
+  var cells = [];
+  for (var blank = 0; blank < firstWeekday; blank++) {
+    cells.push('<span class="shooting-day is-empty" aria-hidden="true"></span>');
+  }
+  for (var day = 1; day <= daysInMonth; day++) {
+    var iso = year + '-' + padDatePart(monthIdx + 1) + '-' + padDatePart(day);
+    var classes = ['shooting-day'];
+    var disabled = false;
+    var note = '';
+    if (iso < todayIso) {
+      classes.push('is-past');
+      disabled = true;
+      note = 'Sudah lewat';
+    } else if (isShootingDateBooked(iso)) {
+      classes.push('is-booked');
+      disabled = true;
+      note = 'Sudah dibooking project lain';
+    } else if (shootingRangeHasConflict(iso, days)) {
+      classes.push('is-blocked');
+      disabled = true;
+      note = 'Rentang ' + days + ' hari dari tanggal ini bentrok dengan jadwal lain';
+    } else {
+      note = 'Tersedia';
+    }
+    if (selected && iso === selected) classes.push('is-selected');
+    else if (selected && days > 1 && iso > selected && iso <= addDaysIso(selected, days - 1)) classes.push('is-inrange');
+    cells.push('<button type="button" class="'+classes.join(' ')+'"'
+      + (disabled ? ' disabled aria-disabled="true"' : ' onclick="selectShootingDate(\''+iso+'\')"')
+      + ' title="'+escapeHtml(note)+'">'+day+'</button>');
+  }
+
+  var weekdayCells = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'].map(function(name) {
+    return '<span>'+name+'</span>';
+  }).join('');
+
+  var statusText = SHOOTING_CALENDAR_STATE.loading
+    ? 'Memuat ketersediaan tanggal...'
+    : (SHOOTING_CALENDAR_STATE.loaded ? '' : 'Ketersediaan tanggal belum termuat — konfirmasi final tetap dicek saat submit.');
+
+  host.innerHTML = ''
+    + '<div class="shooting-cal-head">'
+      + '<button type="button" class="shooting-cal-nav" onclick="moveShootingMonth(-1)"'+(atFirstMonth ? ' disabled aria-disabled="true"' : '')+' aria-label="Bulan sebelumnya">&#8249;</button>'
+      + '<strong>'+escapeHtml(SHOOTING_MONTH_NAMES[monthIdx] + ' ' + year)+'</strong>'
+      + '<button type="button" class="shooting-cal-nav" onclick="moveShootingMonth(1)" aria-label="Bulan berikutnya">&#8250;</button>'
+    + '</div>'
+    + '<div class="shooting-cal-weekdays">'+weekdayCells+'</div>'
+    + '<div class="shooting-cal-grid">'+cells.join('')+'</div>'
+    + (statusText ? '<p class="shooting-cal-status">'+escapeHtml(statusText)+'</p>' : '');
+}
+
+function getShootingScheduleFromForm() {
+  var daysEl = document.getElementById('f-shooting-days');
+  var startEl = document.getElementById('f-shooting-start');
+  var days = Number(daysEl && daysEl.value ? daysEl.value : 0);
+  var start = startEl ? String(startEl.value || '').trim() : '';
+  if (!days || days < 1 || days > 30 || days !== Math.floor(days) || !parseIsoDateLocal(start)) {
+    return {
+      shootingDays: days || '',
+      shootingStartDate: start,
+      shootingEndDate: '',
+      shootingDateLabel: ''
+    };
+  }
+  return {
+    shootingDays: days,
+    shootingStartDate: start,
+    shootingEndDate: addDaysIso(start, days - 1),
+    shootingDateLabel: formatShootingDateLabel(start, days)
+  };
+}
+
+function updateShootingDatePreview() {
+  var preview = document.getElementById('shooting-date-preview');
+  if (!preview) return;
+  var schedule = getShootingScheduleFromForm();
+  if (!schedule.shootingDateLabel) {
+    preview.hidden = true;
+    preview.innerHTML = '';
+    return;
+  }
+  var meta = schedule.shootingDays === 1
+    ? '1 hari shooting · format standar Hari, DD Bulan YYYY'
+    : schedule.shootingDays + ' hari shooting berurutan · format standar Hari, DD Bulan YYYY';
+  preview.hidden = false;
+  preview.innerHTML = escapeHtml(schedule.shootingDateLabel)
+    + '<span class="shooting-date-meta">'+escapeHtml(meta)+'</span>';
+}
+
+function getBookingPayload() {
+  var phoneCode = document.getElementById('f-phone-code').value;
+  var phone = document.getElementById('f-whatsapp').value.trim();
+  var projectTotalInput = document.getElementById('f-project-total');
+  var projectTotal = parseRupiahInput(projectTotalInput ? projectTotalInput.value : '');
+  var serviceLabel = getBookingServiceLabel();
+  var schedule = getShootingScheduleFromForm();
+  return {
+    brandName: document.getElementById('f-brand').value.trim(),
+    whatsapp: phone ? (phoneCode + ' ' + phone) : '',
+    email: document.getElementById('f-email').value.trim(),
+    representativeType: document.getElementById('f-representative').value.trim(),
+    projectType: serviceLabel,
+    serviceType: BOOKING_STATE.serviceType,
+    yearbookPack: BOOKING_STATE.yearbookPack,
+    projectTotal: projectTotal,
+    budgetRange: projectTotal ? ('Rp ' + Number(projectTotal).toLocaleString('id-ID')) : '',
+    totalMurid: isYearbookService() ? document.getElementById('f-total-murid').value.trim() : '',
+    picName: document.getElementById('f-pic').value.trim(),
+    shootingDays: schedule.shootingDays,
+    shootingStartDate: schedule.shootingStartDate,
+    shootingEndDate: schedule.shootingEndDate,
+    shootingDateLabel: schedule.shootingDateLabel,
+    briefNarrative: document.getElementById('f-brief').value.trim(),
+    emailOtpVerified: BOOKING_STATE.emailOtpVerified,
+    accessKey: (typeof isClientUser === 'function' && isClientUser() && typeof getInternalPayKey === 'function')
+      ? getInternalPayKey()
+      : ''
+  };
+}
+
+function setEmailOtpStatus(message, ok) {
+  var el = document.getElementById('email-otp-status');
+  if (!el) return;
+  el.textContent = message;
+  el.className = 'otp-status ' + (ok ? 'ok' : 'warn');
+}
+
+function resetEmailOtpState() {
+  var email = document.getElementById('f-email').value.trim().toLowerCase();
+  if (typeof isBookingOwnedByLoggedInClient === 'function' && isBookingOwnedByLoggedInClient()) {
+    BOOKING_STATE.emailOtpVerified = true;
+    BOOKING_STATE.verifiedEmail = email;
+    setEmailOtpStatus('Email akun sudah terverifikasi.', true);
+    return;
+  }
+  if (email !== BOOKING_STATE.verifiedEmail) {
+    BOOKING_STATE.emailOtpVerified = false;
+    BOOKING_STATE.verifiedEmail = '';
+    setEmailOtpStatus('Email belum diverifikasi.', false);
+  }
+}
+
+function sendBookingEmailOtp() {
+  var email = document.getElementById('f-email').value.trim().toLowerCase();
+  var brand = document.getElementById('f-brand').value.trim();
+  if (!email) { showToast('Email Kosong','Isi email terlebih dahulu.','warning'); return; }
+  if (!brand) { showToast('Nama Kosong','Isi nama/brand terlebih dahulu.','warning'); return; }
+  var btn = document.getElementById('btn-send-email-otp');
+  btn.disabled = true;
+  btn.textContent = 'Mengirim...';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false;
+      btn.textContent = 'Kirim OTP';
+      if (res.success) {
+        BOOKING_STATE.emailOtpVerified = false;
+        BOOKING_STATE.verifiedEmail = '';
+        setEmailOtpStatus('OTP terkirim ke '+email+'.', false);
+        showToast('OTP Terkirim','Cek email untuk kode OTP 6 digit.');
+      } else {
+        showToast('Gagal Kirim OTP', res.error || 'OTP gagal dikirim.', 'warning');
+      }
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false;
+      btn.textContent = 'Kirim OTP';
+      showToast('Error', err.message, 'warning');
+    })
+    .sendBookingEmailOtp(email, brand);
+}
+
+function verifyBookingEmailOtp() {
+  var email = document.getElementById('f-email').value.trim().toLowerCase();
+  var otp = document.getElementById('f-email-otp').value.trim();
+  if (!email) { showToast('Email Kosong','Isi email terlebih dahulu.','warning'); return; }
+  if (otp.length !== 6) { showToast('OTP Belum Lengkap','Masukkan 6 digit kode OTP dari email.','warning'); return; }
+  var btn = document.getElementById('btn-verify-email-otp');
+  btn.disabled = true;
+  btn.textContent = 'Cek...';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false;
+      btn.textContent = 'Verifikasi';
+      if (res.success) {
+        BOOKING_STATE.emailOtpVerified = true;
+        BOOKING_STATE.verifiedEmail = email;
+        setEmailOtpStatus('Email terverifikasi.', true);
+        showToast('Email Terverifikasi','Silakan lanjut ke step 2.');
+      } else {
+        BOOKING_STATE.emailOtpVerified = false;
+        setEmailOtpStatus('OTP tidak valid atau sudah expired.', false);
+        showToast('Verifikasi Gagal', res.error || 'OTP tidak valid.', 'warning');
+      }
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false;
+      btn.textContent = 'Verifikasi';
+      showToast('Error', err.message, 'warning');
+    })
+    .verifyBookingEmailOtp(email, otp);
+}
+
+function isBookingOwnedByLoggedInClient() {
+  if (typeof isClientUser !== 'function' || !isClientUser()) return false;
+  var emailEl = document.getElementById('f-email');
+  var email = emailEl ? String(emailEl.value || '').trim().toLowerCase() : '';
+  var accountEmail = String(_opsInternalEmail || '').trim().toLowerCase();
+  return !!email && !!accountEmail && email === accountEmail;
+}
+
+function syncBookingLoggedInEmailUi() {
+  var loggedIn = typeof isClientUser === 'function' && isClientUser() && !!String(_opsInternalEmail || '').trim();
+  var emailEl = document.getElementById('f-email');
+  var sendBtn = document.getElementById('btn-send-email-otp');
+  var hint = document.getElementById('booking-otp-hint');
+  var verify = document.getElementById('booking-otp-verify');
+  var otpHintLabel = document.getElementById('booking-email-otp-hint');
+  var info = document.getElementById('booking-identity-info');
+  var nextBtn = document.getElementById('booking-step1-next');
+  var row = document.getElementById('booking-email-row');
+
+  if (loggedIn && emailEl) {
+    emailEl.value = String(_opsInternalEmail || '').trim().toLowerCase();
+    emailEl.readOnly = true;
+    BOOKING_STATE.emailOtpVerified = true;
+    BOOKING_STATE.verifiedEmail = emailEl.value;
+  } else if (emailEl) {
+    emailEl.readOnly = false;
+  }
+
+  if (sendBtn) sendBtn.style.display = loggedIn ? 'none' : '';
+  if (hint) hint.style.display = loggedIn ? 'none' : '';
+  if (verify) verify.style.display = loggedIn ? 'none' : '';
+  if (otpHintLabel) otpHintLabel.style.display = loggedIn ? 'none' : '';
+  if (row) row.classList.toggle('is-locked', !!loggedIn);
+  if (info) {
+    info.textContent = loggedIn
+      ? 'Email sudah terverifikasi lewat akun kamu. Project akan tertaut ke email ini, tanpa OTP ulang.'
+      : 'Kami memverifikasi email untuk memastikan keseriusan project dan mengirimkan kode OTP konfirmasi.';
+  }
+  if (nextBtn) nextBtn.textContent = loggedIn ? 'Lanjut ke step 2' : 'Verifikasi & Lanjut ke step 2';
+  if (loggedIn) setEmailOtpStatus('Email akun sudah terverifikasi.', true);
+}
+
+function prefillBookingFromAccount() {
+  if (typeof isClientUser !== 'function' || !isClientUser()) {
+    syncBookingLoggedInEmailUi();
+    return;
+  }
+  var brandEl = document.getElementById('f-brand');
+  if (brandEl && !brandEl.value && _opsInternalName) brandEl.value = _opsInternalName;
+  syncBookingLoggedInEmailUi();
+}
+
+function validateBookingStep(step) {
+  var data = getBookingPayload();
+  if (step === 1) {
+    if (!data.brandName) { showToast('Field Kosong','Isi nama lengkap / brand / sekolah.','warning'); return false; }
+    if (!data.whatsapp) { showToast('Field Kosong','Isi nomor WhatsApp aktif.','warning'); return false; }
+    if (!data.email) { showToast('Field Kosong','Isi email untuk laporan dan dokumen.','warning'); return false; }
+    if (isBookingOwnedByLoggedInClient()) {
+      BOOKING_STATE.emailOtpVerified = true;
+      BOOKING_STATE.verifiedEmail = data.email.toLowerCase();
+    } else if (!BOOKING_STATE.emailOtpVerified || BOOKING_STATE.verifiedEmail !== data.email.toLowerCase()) {
+      showToast('Email Belum Terverifikasi','Kirim dan verifikasi OTP email terlebih dahulu.','warning');
+      return false;
+    }
+  }
+  if (step === 2) {
+    if (!data.projectTotal || Number(data.projectTotal) <= 0) {
+      showToast('Total Harga Kosong','Isi total harga project yang sudah disepakati dengan tim FA.','warning');
+      return false;
+    }
+    if (isYearbookService() && (!data.totalMurid || Number(data.totalMurid) <= 0)) {
+      showToast('Total Murid Kosong','Isi total murid/siswa angkatan untuk project yearbook.','warning');
+      return false;
+    }
+    if (!data.picName) { showToast('PIC Kosong','Isi nama PIC yang membantu tektok harga project.','warning'); return false; }
+    if (!data.shootingDays || Number(data.shootingDays) < 1 || Number(data.shootingDays) > 30) {
+      showToast('Durasi Shooting Kosong','Pilih durasi hari shooting (1–30 hari).','warning');
+      return false;
+    }
+    if (!data.shootingStartDate || !data.shootingDateLabel) {
+      showToast('Tanggal Shooting Kosong','Pilih tanggal shooting yang sudah disepakati bersama PIC FA.','warning');
+      return false;
+    }
+    if (shootingRangeHasConflict(data.shootingStartDate, data.shootingDays)) {
+      showToast('Tanggal Tidak Tersedia','Tanggal itu sudah dibooking project lain. Pilih tanggal lain di kalender.','warning');
+      return false;
+    }
+    if (!data.briefNarrative) { showToast('Brief Kosong','Isi brief singkat dan konsep project.','warning'); return false; }
+  }
+  return true;
+}
+
+function goBookingStep(step) {
+  if (step === 2 && !validateBookingStep(1)) return;
+  if (step === 3 && !validateBookingStep(2)) return;
+  BOOKING_STATE.currentStep = step;
+  [1,2,3].forEach(function(n) {
+    document.getElementById('booking-step-'+n).style.display = n === step ? 'block' : 'none';
+    var stepEl = document.getElementById('bw-step-'+n);
+    stepEl.classList.toggle('active', n === step);
+    stepEl.classList.toggle('done', n < step);
+    stepEl.querySelector('.bw-dot').textContent = n < step ? '✓' : n;
+  });
+  if (step === 3) renderBookingSummary();
+  var body = document.querySelector('.booking-modal-body');
+  if (body) body.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function openBookingModal() {
+  if (typeof canOpenBookingPage === 'function' && !canOpenBookingPage()) {
+    setPage('ops');
+    return;
+  }
+  var modal = document.getElementById('booking');
+  if (!modal) return;
+  modal.classList.add('open');
+  document.body.classList.add('booking-modal-open');
+  if (typeof prefillBookingFromAccount === 'function') prefillBookingFromAccount();
+  if (typeof initShootingDaysSelect === 'function') initShootingDaysSelect();
+  // Lazy: ketersediaan tanggal baru diambil saat modal dibuka, bukan saat halaman load.
+  loadShootingAvailability(false);
+  var body = document.querySelector('.booking-modal-body');
+  if (body) body.scrollTop = 0;
+}
+
+function closeBookingModal(refreshPortal) {
+  var modal = document.getElementById('booking');
+  var thankYou = document.getElementById('booking-thank-you');
+  var shouldRefresh = refreshPortal === true || (thankYou && thankYou.style.display === 'block');
+  if (modal) modal.classList.remove('open');
+  document.body.classList.remove('booking-modal-open');
+  if (shouldRefresh) refreshClientPortalAfterBooking();
+}
+
+function refreshClientPortalAfterBooking() {
+  if (typeof isClientUser !== 'function' || !isClientUser()) return;
+  if (typeof getInternalPayKey !== 'function' || !getInternalPayKey()) return;
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.success && typeof showClientPortalDashboardNow === 'function') {
+        showClientPortalDashboardNow(res);
+      } else if (typeof renderClientPortalHome === 'function') {
+        renderClientPortalHome();
+      }
+    })
+    .refreshClientPortalForSession(getInternalPayKey());
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape') return;
+  var modal = document.getElementById('booking');
+  if (modal && modal.classList.contains('open')) closeBookingModal();
+});
+
+function renderBookingSummary() {
+  var data = getBookingPayload();
+  var rows = [
+    '<div class="summary-row"><span>Klien</span><span>'+escapeHtml(data.brandName || '-')+'</span></div>',
+    '<div class="summary-row"><span>WhatsApp</span><span>'+escapeHtml(data.whatsapp || '-')+'</span></div>',
+    '<div class="summary-row"><span>Email</span><span>'+escapeHtml(data.email || '-')+'</span></div>',
+    '<div class="summary-row"><span>Mewakili</span><span>'+escapeHtml(data.representativeType || '-')+'</span></div>',
+    '<div class="summary-row"><span>Layanan</span><span>'+escapeHtml(data.projectType || data.serviceType || '-')+'</span></div>',
+    '<div class="summary-row"><span>Total Harga Kesepakatan</span><span>'+escapeHtml(data.projectTotal ? ('Rp '+Number(data.projectTotal).toLocaleString('id-ID')) : '-')+'</span></div>'
+  ];
+  if (isYearbookService()) {
+    rows.push('<div class="summary-row"><span>Total Murid</span><span>'+escapeHtml(data.totalMurid || '-')+'</span></div>');
+  }
+  rows.push('<div class="summary-row"><span>PIC</span><span>'+escapeHtml(data.picName || '-')+'</span></div>');
+  rows.push('<div class="summary-row"><span>Jadwal Shooting</span><span>'+escapeHtml(data.shootingDateLabel || '-')+'</span></div>');
+  document.getElementById('booking-summary').innerHTML = rows.join('');
+}
+
+function escapeHtml(value) {
+  // Wajib dipakai untuk semua data user/server yang masuk ke innerHTML.
+  return String(value || '').replace(/[&<>"']/g, function(ch) {
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch];
+  });
+}
+/** Escape untuk literal di dalam string JS di atribut HTML (onclick="fn('...')"). */
+function escapeJs(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/</g, '\\x3c')
+    .replace(/>/g, '\\x3e')
+    .replace(/[\r\n]/g, ' ');
+}
+/** Escape untuk nilai atribut HTML (data-*, class, id). */
+function escapeAttr(value) {
+  return escapeHtml(value);
+}
+function safeExternalUrl(value) {
+  var url = String(value || '').trim();
+  // Hanya Drive/Docs https — cegah javascript: / data: di <a href>.
+  return /^https:\/\/(drive|docs)\.google\.com\//.test(url) ? escapeHtml(url) : '';
+}
+
+var WEAK_PASSWORDS = {
+  password: 1, password1: 1, password123: 1, passw0rd: 1,
+  '12345678': 1, '123456789': 1, '1234567890': 1, qwerty12: 1,
+  qwerty123: 1, admin123: 1, welcome1: 1, letmein1: 1,
+  fastudio: 1, fastudio1: 1, fastudio123: 1, changeme: 1,
+  indonesia: 1, indonesia1: 1
+};
+
+function validatePasswordPolicy(password) {
+  password = String(password || '');
+  if (!password) return { ok: false, error: 'Password wajib diisi.' };
+  if (password.length < 8) return { ok: false, error: 'Password minimal 8 karakter, berisi huruf, angka, dan simbol.' };
+  if (password.length > 128) return { ok: false, error: 'Password maksimal 128 karakter.' };
+  if (/\s/.test(password)) return { ok: false, error: 'Password tidak boleh mengandung spasi.' };
+  if (!/[A-Za-z]/.test(password)) return { ok: false, error: 'Password harus berisi huruf.' };
+  if (!/[0-9]/.test(password)) return { ok: false, error: 'Password harus berisi angka.' };
+  if (!/[^A-Za-z0-9]/.test(password)) return { ok: false, error: 'Password harus berisi simbol (contoh: @ # ! %).' };
+  if (WEAK_PASSWORDS[password.toLowerCase()]) return { ok: false, error: 'Password terlalu umum. Pilih kombinasi yang lebih unik.' };
+  if (/^(.)\1+$/.test(password)) return { ok: false, error: 'Password tidak boleh karakter yang diulang saja.' };
+  return { ok: true };
+}
+
+function inspectProofFileClient(file) {
+  if (!file) return { ok: false, error: 'Upload bukti transfer terlebih dahulu.' };
+  if (file.size > 8 * 1024 * 1024) return { ok: false, error: 'Maksimal ukuran bukti transfer 8MB.' };
+  var name = String(file.name || '');
+  if (!name) return { ok: false, error: 'Nama file bukti transfer kosong.' };
+  if (/[\\/]/.test(name) || name.indexOf('..') >= 0) return { ok: false, error: 'Nama file bukti transfer tidak valid.' };
+  if (name.length > 120) return { ok: false, error: 'Nama file bukti transfer terlalu panjang.' };
+  var lowered = name.toLowerCase();
+  if (/\.(php|exe|js|html|htm|svg|xml|sh|bat|cmd|scr)(\.|$)/.test(lowered)) {
+    return { ok: false, error: 'Nama file mengandung ekstensi yang tidak diizinkan.' };
+  }
+  var extMatch = lowered.match(/\.([a-z0-9]+)$/);
+  var ext = extMatch ? extMatch[1] : '';
+  if (ext !== 'pdf' && ext !== 'png' && ext !== 'jpg' && ext !== 'jpeg') {
+    return { ok: false, error: 'Format bukti transfer tidak valid. Gunakan PDF, JPG, atau PNG.' };
+  }
+  var type = String(file.type || '').toLowerCase();
+  var allowedType = !type
+    || type === 'application/pdf'
+    || type === 'image/png'
+    || type === 'image/jpeg'
+    || type === 'image/jpg';
+  if (!allowedType) {
+    return { ok: false, error: 'Format bukti transfer tidak valid. Gunakan PDF, JPG, atau PNG.' };
+  }
+  if ((type === 'application/pdf' && ext !== 'pdf')
+      || (type === 'image/png' && ext !== 'png')
+      || ((type === 'image/jpeg' || type === 'image/jpg') && ext !== 'jpg' && ext !== 'jpeg')) {
+    return { ok: false, error: 'Ekstensi file tidak sesuai tipenya.' };
+  }
+  return { ok: true };
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initShootingDaysSelect);
+} else {
+  initShootingDaysSelect();
+}
+
+</script>

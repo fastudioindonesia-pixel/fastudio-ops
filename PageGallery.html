@@ -1,0 +1,72 @@
+<div id="gallery" class="page lg-work-page">
+  <div class="lg-shell">
+
+    <header class="lw-hero lg-reveal">
+      <div class="lg-hero-kicker">
+        <span class="lg-hero-kicker-dot"></span>
+        PORTFOLIO
+        <span class="lg-hero-kicker-line"></span>
+        VISUAL ARCHIVE
+      </div>
+      <div class="lw-hero-title-wrap">
+        <h1 class="lw-hero-title">Stories<br><span>we've made.</span></h1>
+        <p class="lw-hero-copy">Kurasi karya produksi FA Studio — yearbook, music video, commercial, dan kategori lain dalam satu arsip visual yang cinematic.</p>
+      </div>
+      <div class="lw-hero-meta" id="gallery-hero-meta">
+        <span class="lw-hero-filter-name" id="gallery-filter-label">Semua</span>
+      </div>
+    </header>
+
+    <section class="lw-toolbar lg-reveal" style="--enter-delay:.06s" aria-label="Filter kategori">
+      <div class="lw-toolbar-stack">
+        <div class="lw-toolbar-glass">
+          <div class="lw-filters" id="gallery-filters"></div>
+        </div>
+        <div class="lw-toolbar-scroll" aria-hidden="true">
+          <div class="lw-toolbar-scroll-thumb"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lw-content lg-reveal" style="--enter-delay:.12s">
+      <div class="lw-layout" id="gallery-layout"></div>
+    </section>
+
+    <div class="lg-page-end lg-reveal" style="--enter-delay:.18s">
+      <section class="lw-cta-band" id="lw-cta-band">
+        <div class="lw-cta-glass">
+          <div class="lg-label">LET'S CREATE TOGETHER</div>
+          <h2>Got a story<br><em>worth telling?</em></h2>
+          <p>Mulai dari ide sampai frame terakhir — kami bantu wujudkan visual yang memorable.</p>
+          <button type="button" class="lg-button" onclick="openStartProject()">Start a conversation</button>
+        </div>
+      </section>
+
+<?!= include("PartialsLgFooter"); ?>
+    </div>
+
+  </div>
+</div>
+
+<div class="gallery-lightbox lw-lightbox" id="gallery-lightbox" aria-hidden="true">
+  <button type="button" class="lw-lb-close" onclick="closeGalleryLightbox()" aria-label="Tutup">×</button>
+  <button type="button" class="lw-lb-nav prev" onclick="stepGalleryLightbox(-1)" aria-label="Sebelumnya">&#8249;</button>
+  <button type="button" class="lw-lb-nav next" onclick="stepGalleryLightbox(1)" aria-label="Berikutnya">&#8250;</button>
+  <div class="lw-lb-panel" onclick="event.stopPropagation()">
+    <div class="lw-lb-media gallery-lightbox-media">
+      <img id="gallery-lightbox-img" src="" alt=""/>
+      <iframe id="gallery-lightbox-yt" class="gallery-lightbox-yt" src="" title="YouTube video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+    </div>
+    <div class="lw-lb-body">
+      <div class="lg-label" id="gallery-lightbox-cat">Kategori</div>
+      <h3 id="gallery-lightbox-title">Judul Project</h3>
+      <p class="lw-lb-desc" id="gallery-lightbox-desc">Deskripsi project.</p>
+      <div class="lw-lb-facts">
+        <div class="lw-lb-fact"><span>Klien</span><span id="gallery-lightbox-client">—</span></div>
+        <div class="lw-lb-fact"><span>Tahun</span><span id="gallery-lightbox-year">—</span></div>
+        <div class="lw-lb-fact"><span>Format</span><span id="gallery-lightbox-format">—</span></div>
+        <div class="lw-lb-fact"><span>Role FA Studio</span><span id="gallery-lightbox-role">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>

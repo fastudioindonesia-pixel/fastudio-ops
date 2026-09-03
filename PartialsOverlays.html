@@ -1,0 +1,82 @@
+<div class="approval-modal-backdrop" id="approval-modal" onclick="if(event.target===this)closeApprovalModal()">
+  <div class="approval-modal" role="dialog" aria-modal="true" aria-labelledby="am-title">
+    <div class="approval-modal-hero">
+      <h3 id="am-title">Review Pembayaran</h3>
+      <p class="am-sub" id="am-sub">Periksa kelengkapan sebelum approve.</p>
+    </div>
+    <div class="approval-modal-body">
+      <div class="am-amount" id="am-amount-wrap" style="display:none">
+        <div>
+          <div class="am-amount-label">Nominal diajukan</div>
+          <div class="am-amount-value" id="am-amount-value">Rp 0</div>
+        </div>
+        <div class="lead-ts" id="am-amount-meta"></div>
+      </div>
+      <div class="am-proof" id="am-proof-wrap" style="display:none"></div>
+      <div class="am-grid" id="am-details"></div>
+      <div class="fg" id="am-director-notes-wrap" style="display:none">
+        <label id="am-director-notes-label">Catatan Direktur</label>
+        <textarea class="fc" id="am-director-notes" placeholder="Catatan untuk PIC (opsional saat approve, wajib saat reject)"></textarea>
+      </div>
+      <div class="fg" id="am-reject-wrap" style="display:none">
+        <label>Catatan Reject (wajib)</label>
+        <textarea class="fc" id="am-reject-notes" placeholder="Contoh: nominal tidak sesuai / bukti kurang jelas"></textarea>
+      </div>
+      <div class="am-actions" id="am-actions"></div>
+    </div>
+  </div>
+</div>
+
+<div class="approval-modal-backdrop" id="dept-locked-alert" onclick="if(event.target===this)closeDeptLockedAlert()">
+  <div class="approval-modal" role="dialog" aria-modal="true">
+    <div class="approval-modal-hero">
+      <h3>Departemen Sudah Selesai</h3>
+      <p class="am-sub" id="dept-locked-alert-sub">Departemen ini sudah tervalidasi 100% oleh Direktur dan tidak bisa diubah lagi.</p>
+    </div>
+    <div class="approval-modal-body">
+      <div class="am-grid" id="dept-locked-alert-details"></div>
+      <p class="lead-ts" style="margin-top:12px">Form update progress terkunci. Upload atau perubahan data produksi harus melalui Direktur jika benar-benar diperlukan.</p>
+      <div class="am-actions">
+        <button class="btn-p" onclick="closeDeptLockedAlert()">Mengerti</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="approval-modal-backdrop" id="dept-pending-alert" onclick="if(event.target===this)closeDeptPendingAlert()">
+  <div class="approval-modal" role="dialog" aria-modal="true">
+    <div class="approval-modal-hero">
+      <h3>Menunggu Validasi Direktur</h3>
+      <p class="am-sub" id="dept-pending-alert-sub">Pengajuan progress menunggu review Direktur sebelum disahkan.</p>
+    </div>
+    <div class="approval-modal-body">
+      <div class="am-grid" id="dept-pending-alert-details"></div>
+      <div class="am-actions">
+        <button class="btn-p" onclick="closeDeptPendingAlert()">Mengerti</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="approval-modal-backdrop" id="legal-modal" onclick="if(event.target===this)closeLegalDoc()">
+  <div class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legal-modal-title">
+    <h3 id="legal-modal-title">Syarat dan Ketentuan</h3>
+    <div class="legal-scroll" id="legal-scroll" onscroll="onLegalScroll()">
+      <p>Dengan membuat akun atau menggunakan layanan FA Studio Indonesia, Anda menyetujui Syarat dan Ketentuan serta Kebijakan Privasi yang berlaku.</p>
+      <p>FA Studio Indonesia memproses data pribadi Anda, antara lain nama, alamat email, nomor WhatsApp, data akun, serta informasi proyek yang Anda kirimkan, untuk keperluan registrasi akun, komunikasi, pelaksanaan produksi, penagihan, dan dukungan layanan.</p>
+      <p>FA Studio Indonesia tidak menjual data pribadi Anda kepada pihak ketiga. Data disimpan selama akun atau proyek masih diperlukan, kemudian dihapus atau diarsipkan sesuai kebutuhan administrasi dan ketentuan peraturan perundang-undangan yang berlaku.</p>
+      <p>Sebagai subjek data pribadi, Anda berhak meminta akses, perbaikan, atau penghapusan data pribadi melalui email atau WhatsApp resmi FA Studio Indonesia, sesuai Undang-Undang Nomor 27 Tahun 2022 tentang Perlindungan Data Pribadi.</p>
+      <p>Akun hanya dipergunakan oleh pihak yang berwenang. Anda wajib menjaga kerahasiaan kata sandi dan bertanggung jawab atas seluruh aktivitas yang terjadi melalui akun tersebut.</p>
+      <p>Pemesanan proyek (booking) mengikuti kesepakatan ruang lingkup (scope) dan harga dengan tim FA Studio Indonesia. Perubahan material terhadap brief atau jadwal dapat memengaruhi timeline dan biaya.</p>
+      <p>FA Studio Indonesia dapat menghubungi Anda melalui email dan WhatsApp terkait verifikasi OTP, status proyek, pembayaran, serta penyerahan hasil pekerjaan.</p>
+      <p>Dengan menekan tombol &ldquo;Saya Setuju&rdquo;, Anda menyatakan telah membaca ringkasan ini dan memberikan persetujuan atas pemrosesan data pribadi Anda oleh FA Studio Indonesia.</p>
+    </div>
+    <p class="legal-scroll-hint" id="legal-scroll-hint">Gulir ke bawah untuk melanjutkan.</p>
+    <div class="legal-actions">
+      <button type="button" class="btn-g" onclick="closeLegalDoc()">Batal</button>
+      <button type="button" class="btn-p" id="legal-accept-btn" disabled onclick="acceptLegalDoc()">Saya Setuju</button>
+    </div>
+  </div>
+</div>
+<div id="toast"><span class="t-icon" id="t-icon"></span><div><div class="t-title" id="t-title">Success</div><div class="t-msg" id="t-msg"></div></div><span class="t-close" onclick="hideToast()"></span></div>
+<div id="loading" aria-live="polite" aria-busy="true">
+  <div class="spinner" role="status" aria-label="Memuat"></div>
+</div>

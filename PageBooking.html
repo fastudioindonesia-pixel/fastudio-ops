@@ -1,0 +1,146 @@
+<div id="booking" class="booking-modal-backdrop" onclick="if(event.target===this)closeBookingModal()">
+  <div class="booking-modal" role="dialog" aria-modal="true" aria-labelledby="booking-modal-title">
+    <div class="booking-modal-head">
+      <div>
+        <p class="s-label" style="color:var(--purple2);margin-bottom:6px">Booking Now</p>
+        <h2 id="booking-modal-title">Mulai Project Bersama FA Studio</h2>
+      </div>
+      <button type="button" class="booking-modal-close" onclick="closeBookingModal()" aria-label="Tutup">&times;</button>
+    </div>
+    <div class="booking-modal-body">
+      <div id="booking-client-intake">
+        <div id="booking-wizard-body">
+        <div class="booking-wizard">
+          <div class="booking-stepper">
+            <div class="bw-step active" id="bw-step-1"><div class="bw-dot">1</div><div>Identitas</div></div>
+            <div class="bw-step" id="bw-step-2"><div class="bw-dot">2</div><div>Project</div></div>
+            <div class="bw-step" id="bw-step-3"><div class="bw-dot">3</div><div>Konfirmasi</div></div>
+          </div>
+
+          <div class="booking-panel" id="booking-step-1">
+            <div class="booking-panel-title">Data klien <span class="req-badge">Wajib</span></div>
+            <div class="info-box" id="booking-identity-info">Kami memverifikasi email untuk memastikan keseriusan project dan mengirimkan kode OTP konfirmasi.</div>
+            <div class="fg"><label>Nama lengkap / brand / sekolah</label><input type="text" class="fc" id="f-brand" placeholder="e.g. SMAN 5 Bandung atau PT Kreasi Nusantara"/></div>
+            <div class="fg"><label>Nomor WhatsApp aktif</label>
+              <div class="phone-row">
+                <select class="fc" id="f-phone-code"><option value="+62">+62</option><option value="+60">+60</option><option value="+65">+65</option></select>
+                <input type="tel" class="fc" id="f-whatsapp" placeholder="812-xxxx-xxxx"/>
+              </div>
+              <div class="lead-ts">Nomor ini akan digunakan tim FA Studio untuk follow-up project.</div>
+            </div>
+            <div class="fg">
+              <label>Email aktif <span id="booking-email-otp-hint" style="color:var(--purple2)">— kode OTP dikirim ke sini</span></label>
+              <div class="email-otp-row" id="booking-email-row">
+                <input type="email" class="fc" id="f-email" placeholder="contact@sekolah.com" required oninput="resetEmailOtpState()"/>
+                <button class="btn-otp btn-otp-send" id="btn-send-email-otp" onclick="sendBookingEmailOtp()">Kirim OTP</button>
+              </div>
+              <div class="lead-ts" id="booking-otp-hint">Kode berlaku 5 menit. Cek folder Spam jika tidak masuk.</div>
+              <div class="email-otp-verify" id="booking-otp-verify">
+                <input type="text" class="fc otp-input" id="f-email-otp" placeholder="000000" maxlength="6" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,6)"/>
+                <button class="btn-otp btn-otp-verify" id="btn-verify-email-otp" onclick="verifyBookingEmailOtp()">Verifikasi</button>
+              </div>
+              <div class="otp-status warn" id="email-otp-status">Email belum diverifikasi.</div>
+            </div>
+            <div class="fg"><label>Mewakili sebagai apa</label><input type="text" class="fc" id="f-representative" placeholder="e.g. Ketua OSIS, Humas sekolah, Brand manager"/></div>
+            <div class="fg"><label>Layanan yang dipilih</label>
+              <div class="option-grid service-option-grid">
+                <div class="option-card" data-group="service" data-value="Yearbook &amp; Video Angkatan" onclick="selectBookingOption(this)"><h4>1. Yearbook &amp; Video Angkatan</h4><p>Buku tahunan sinematik + video angkatan</p></div>
+                <div class="option-card" data-group="service" data-value="Music Video Commercial" onclick="selectBookingOption(this)"><h4>2. Music Video Commercial</h4><p>Music video untuk brand, artis, atau kampanye</p></div>
+                <div class="option-card" data-group="service" data-value="Video &amp; Film Production" onclick="selectBookingOption(this)"><h4>3. Video &amp; Film Production</h4><p>Company profile, dokumenter, film iklan</p></div>
+                <div class="option-card" data-group="service" data-value="Content Specialist" onclick="selectBookingOption(this)"><h4>4. Content Specialist</h4><p>Konten sosial media, campaign, retainer</p></div>
+                <div class="option-card" data-group="service" data-value="3D Animation" onclick="selectBookingOption(this)"><h4>5. 3D Animation</h4><p>Motion graphics, visualisasi 3D</p></div>
+              </div>
+              <div class="yearbook-pack-panel" id="yearbook-pack-panel" style="display:none">
+                <span class="pack-label">Pilih paket Yearbook &amp; Video Angkatan</span>
+                <div class="option-grid pack-option-grid">
+                  <div class="option-card" data-group="yearbook-pack" data-value="Bronze Pack" onclick="selectBookingOption(this)"><h4>Bronze Pack</h4></div>
+                  <div class="option-card" data-group="yearbook-pack" data-value="Silver Pack" onclick="selectBookingOption(this)"><h4>Silver Pack</h4></div>
+                  <div class="option-card" data-group="yearbook-pack" data-value="Gold Pack" onclick="selectBookingOption(this)"><h4>Gold Pack</h4></div>
+                  <div class="option-card" data-group="yearbook-pack" data-value="Luxury Pack" onclick="selectBookingOption(this)"><h4>Luxury Pack</h4></div>
+                </div>
+              </div>
+            </div>
+            <div class="booking-actions" style="grid-template-columns:1fr">
+              <button class="btn-submit" id="booking-step1-next" onclick="goBookingStep(2)">Verifikasi & Lanjut ke step 2</button>
+            </div>
+          </div>
+
+          <div class="booking-panel" id="booking-step-2" style="display:none">
+            <div class="booking-panel-title">Detail project <span class="internal-badge">Terverifikasi</span></div>
+            <div class="info-box"><strong>Catatan bisnis:</strong> Form ini untuk klien yang sudah membahas scope &amp; harga dengan tim FA. Total harga di bawah akan langsung masuk Enterprise Operation sebagai Total Project.</div>
+            <div class="fg">
+              <label>Total harga project kesepakatan (Rp) <span class="req-badge">Wajib</span></label>
+              <input type="text" class="fc" id="f-project-total" placeholder="contoh: 15.000.000" inputmode="numeric" oninput="formatRupiahField(this)"/>
+              <div class="lead-ts">Isi nominal final yang sudah tektok / disepakati bersama tim FA Studio sebelum booking.</div>
+            </div>
+            <div class="fg" id="yearbook-student-count-field" style="display:none">
+              <label>Total murid <span class="req-badge">Wajib</span></label>
+              <input type="text" class="fc" id="f-total-murid" placeholder="contoh: 250" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')"/>
+              <div class="lead-ts">Isi jumlah total murid/siswa angkatan untuk perhitungan buku tahunan.</div>
+            </div>
+            <div class="fg"><label>Nama PIC <span class="req-badge">Wajib</span></label>
+              <input type="text" class="fc" id="f-pic" placeholder="Nama tim FA yang bernegosiasi dengan kamu"/>
+              <div class="lead-ts">Isi nama tim FA Studio yang selama ini kamu diskusikan / tektok soal harga project.</div>
+            </div>
+            <div class="fg shooting-schedule-field">
+              <label>Jadwal shooting <span class="req-badge">Wajib</span></label>
+              <div class="lead-ts shooting-schedule-hint">Isi tanggal shooting yang sudah disepakati bersama PIC FA. Pilih durasi dulu (1–30 hari), lalu pilih tanggalnya.</div>
+              <div class="shooting-schedule-box">
+                <div class="fg shooting-days-field">
+                  <label for="f-shooting-days">Durasi hari shooting</label>
+                  <select class="fc" id="f-shooting-days" onchange="onShootingDaysChange()">
+                    <option value="">Pilih durasi (1–30 hari)</option>
+                  </select>
+                </div>
+                <div class="fg" id="shooting-date-field" style="display:none;margin-bottom:0">
+                  <label id="shooting-date-label">Tanggal shooting</label>
+                  <input type="hidden" id="f-shooting-start"/>
+                  <div class="shooting-calendar" id="shooting-calendar" aria-live="polite"></div>
+                  <div class="shooting-legend">
+                    <span class="shooting-legend-item"><i class="is-free"></i>Tersedia</span>
+                    <span class="shooting-legend-item"><i class="is-booked"></i>Sudah dibooking</span>
+                    <span class="shooting-legend-item"><i class="is-picked"></i>Pilihan kamu</span>
+                  </div>
+                  <div class="shooting-date-preview" id="shooting-date-preview" hidden></div>
+                </div>
+              </div>
+            </div>
+            <div class="fg"><label>Brief singkat & konsep</label><textarea class="fc" id="f-brief" placeholder="Ceritakan visi project, target audience, tone yang diinginkan, referensi film/karya lain jika ada..."></textarea></div>
+            <div class="booking-actions">
+              <button class="btn-g" onclick="goBookingStep(1)">Kembali</button>
+              <button class="btn-submit" onclick="goBookingStep(3)">Lanjut ke konfirmasi</button>
+            </div>
+          </div>
+
+          <div class="booking-panel" id="booking-step-3" style="display:none">
+            <div class="booking-panel-title">Konfirmasi & submit</div>
+            <div class="summary-box" id="booking-summary"></div>
+            <div class="info-box"><strong>Setelah submit:</strong><br/>Brief masuk ke pipeline FA Studio, dan tim kami akan menghubungi dalam 1x24 jam kerja.</div>
+            <div class="booking-actions">
+              <button class="btn-g" onclick="goBookingStep(2)">Kembali</button>
+              <button class="btn-submit" onclick="submitIntake()">Submit brief & trigger automation</button>
+            </div>
+          </div>
+
+          <div class="booking-panel thank-you-panel" id="booking-thank-you" style="display:none">
+            <div class="thank-you-card">
+              <div class="thank-you-icon" aria-hidden="true">✓</div>
+              <p class="thank-you-kicker">Brief diterima</p>
+              <h2>Terima kasih</h2>
+              <p class="thank-you-copy">Tim FA Studio akan meninjau brief kamu, lalu menghubungi via WhatsApp atau email maksimal 1×24 jam kerja.</p>
+              <div class="thank-you-id">
+                <span>Project ID</span>
+                <strong id="thank-you-project-id">-</strong>
+              </div>
+              <div class="booking-actions booking-thank-you-actions">
+                <button class="btn-submit" onclick="closeBookingModal(true)">Kembali ke dashboard</button>
+                <button class="btn-g" onclick="resetBookingForm()">Buat booking baru</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

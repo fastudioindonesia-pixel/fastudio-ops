@@ -1,0 +1,101 @@
+      <div class="ops-view" id="view-users">
+        <div class="tu-layout">
+          <div id="users-stats-row" class="tu-stats-row glass-enter" style="--enter-delay:0s"></div>
+
+          <div class="tu-main glass-enter" style="--enter-delay:.08s">
+            <div class="tu-list-card">
+              <div class="tu-list-head">
+                <div>
+                  <h3>Users</h3>
+                  <p>Tim di sheet Users, client di ClientUsers. Hapus client membatalkan seluruh project-nya.</p>
+                </div>
+                <button type="button" class="tu-refresh-btn" onclick="loadInternalUsers()">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 0-15.5-6.4"/><path d="M3 4v5h5"/><path d="M3 12a9 9 0 0 0 15.5 6.4"/><path d="M21 20v-5h-5"/></svg>
+                  Refresh
+                </button>
+              </div>
+
+              <div class="tu-tabs users-filters" id="users-filters" role="group" aria-label="Filter user">
+                <button type="button" class="tu-tab active" id="users-filter-internal" onclick="setUsersFilter('internal')">Tim Internal</button>
+                <button type="button" class="tu-tab" id="users-filter-client" onclick="setUsersFilter('client')">Client</button>
+              </div>
+
+              <div class="tu-cols" aria-hidden="true">
+                <span class="tu-col-user">User</span>
+                <span class="tu-col-role">Role</span>
+                <span class="tu-col-status">Status</span>
+                <span class="tu-col-aksi">Aksi</span>
+              </div>
+
+              <div id="users-body" class="tu-rows"></div>
+
+              <div class="tu-list-foot">
+                <p id="users-count">—</p>
+                <p class="tu-foot-note">Hapus hanya untuk client, khusus Direktur.</p>
+              </div>
+            </div>
+
+            <div class="tu-form-card glass-enter" style="--enter-delay:.18s">
+              <div class="tu-form-head" id="user-form-head">
+                <div id="user-form-head-default">
+                  <h3 id="user-form-title">Tambah User Baru</h3>
+                  <p id="user-form-subtitle">Isi form untuk menambahkan akun baru.</p>
+                </div>
+                <div id="user-form-head-edit" class="tu-form-head-edit" style="display:none">
+                  <div class="tu-form-avatar" id="user-form-avatar">?</div>
+                  <div>
+                    <h3>Update User</h3>
+                    <p id="user-form-edit-sub">—</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="tu-form-fields">
+                <div class="fg full">
+                  <label>Email</label>
+                  <input type="email" class="fc" id="user-email" placeholder="email@fastudio.id" oninput="updateUserFormPreview()"/>
+                </div>
+                <div class="tu-form-row">
+                  <div class="fg">
+                    <label>Nama</label>
+                    <input type="text" class="fc" id="user-name" placeholder="Nama akun" oninput="updateUserFormPreview()"/>
+                  </div>
+                  <div class="fg tu-status-field">
+                    <label>Status</label>
+                    <select class="fc" id="user-active" onchange="updateUserFormPreview()">
+                      <option value="TRUE">Aktif</option>
+                      <option value="FALSE">Non-Aktif</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="fg full">
+                  <label>Role</label>
+                  <select class="fc" id="user-role" onchange="updateUserFormPreview()">
+                    <option value="OFFICER">Officer</option>
+                    <option value="DIRECTOR">Direktur</option>
+                    <option value="MARKETING">Marketing (PIC)</option>
+                    <option value="SOUND_MAN">Sound Man (PIC)</option>
+                    <option value="EDITOR">Editor (PIC)</option>
+                    <option value="CLIENT">Client</option>
+                  </select>
+                </div>
+                <div class="fg full">
+                  <label>Password</label>
+                  <input type="password" class="fc" id="user-password" placeholder="Huruf, angka, dan simbol"/>
+                  <div class="tu-pass-hint">Min. 8 karakter, huruf + angka + simbol. Kosongkan jika tidak reset.</div>
+                </div>
+
+                <div class="tu-preview" id="user-form-preview"></div>
+              </div>
+
+              <div class="tu-form-actions">
+                <button type="button" class="tu-save-btn" onclick="saveUserFromForm()">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+                  Simpan User
+                </button>
+                <button type="button" class="tu-reset-btn" onclick="resetUserForm()">Reset Form</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>

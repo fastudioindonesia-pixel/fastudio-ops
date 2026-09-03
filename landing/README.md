@@ -26,9 +26,9 @@ URL browser tetap di `fastudio.id/signin` (shell Vercel + iframe GAS).
 | Path | Isi |
 |------|-----|
 | `/` | Home · Work · Services · About (+ mobile nav) |
-| `/signin` | **Login gate** → GAS auth + post-login system |
-| `/signin?page=reset-password` | Reset password (masih di gate) |
-| `/app`, `/ops`, `/booking` | Alias → `/signin` |
+| `/signin` | **Login gate** → GAS auth + post-login system (`signin.html`, clean URL) |
+| `/app` | Alias file `app.html` (same gate) |
+| `/ops`, `/booking` | Rewrite → `/signin` |
 
 ## Deploy
 

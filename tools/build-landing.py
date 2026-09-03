@@ -532,10 +532,8 @@ def write_vercel_json() -> None:
         """{
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/signin", "destination": "/app.html" },
-    { "source": "/app", "destination": "/app.html" },
-    { "source": "/ops", "destination": "/app.html" },
-    { "source": "/booking", "destination": "/app.html" }
+    { "source": "/ops", "destination": "/signin" },
+    { "source": "/booking", "destination": "/signin" }
   ],
   "headers": [
     {
@@ -582,9 +580,9 @@ URL browser tetap di `fastudio.id/signin` (shell Vercel + iframe GAS).
 | Path | Isi |
 |------|-----|
 | `/` | Home · Work · Services · About (+ mobile nav) |
-| `/signin` | **Login gate** → GAS auth + post-login system |
-| `/signin?page=reset-password` | Reset password (masih di gate) |
-| `/app`, `/ops`, `/booking` | Alias → `/signin` |
+| `/signin` | **Login gate** → GAS auth + post-login system (`signin.html`, clean URL) |
+| `/app` | Alias file `app.html` (same gate) |
+| `/ops`, `/booking` | Rewrite → `/signin` |
 
 ## Deploy
 
@@ -607,7 +605,9 @@ def main() -> None:
     (OUT / "landing.js").write_text(landing_js, encoding="utf-8")
     (OUT / "logos.js").write_text(build_logos_js(), encoding="utf-8")
     (OUT / "index.html").write_text(build_index(), encoding="utf-8")
-    (OUT / "app.html").write_text(build_app_html(), encoding="utf-8")
+    gate = build_app_html()
+    (OUT / "app.html").write_text(gate, encoding="utf-8")
+    (OUT / "signin.html").write_text(gate, encoding="utf-8")
 
     copy_assets()
     write_config_if_needed()

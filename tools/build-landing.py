@@ -163,17 +163,13 @@ def build_app_html() -> str:
   #fa-app-boot {
     position: fixed; inset: 0; z-index: 2;
     display: flex; align-items: center; justify-content: center;
-    background: #f8f8f6;
-    transition: opacity .28s ease, visibility .28s ease;
+    background:
+      radial-gradient(circle at 78% 18%,rgba(255,255,255,.98),transparent 22%),
+      radial-gradient(circle at 12% 82%,rgba(255,255,255,.85),transparent 30%),
+      linear-gradient(135deg,#f8f8f6 0%,#e8e8e3 52%,#f5f5f2 100%);
+    transition: opacity .22s ease, visibility .22s ease;
   }
   #fa-app-boot.is-done { opacity: 0; visibility: hidden; pointer-events: none; }
-  .fa-app-boot-card {
-    display: flex; flex-direction: column; align-items: center;
-    gap: 14px; text-align: center; padding: 28px;
-  }
-  .fa-app-boot-card img { width: 112px; height: auto; }
-  .fa-app-boot-card strong { font-size: 17px; letter-spacing: -.02em; }
-  .fa-app-boot-card span { font-size: 13px; opacity: .62; max-width: 300px; line-height: 1.45; }
   .fa-app-spin {
     width: 28px; height: 28px; border-radius: 50%;
     border: 2px solid rgba(7,7,7,.12); border-top-color: #070707;
@@ -196,13 +192,8 @@ def build_app_html() -> str:
 </style>
 </head>
 <body>
-  <div id="fa-app-boot" role="status" aria-live="polite">
-    <div class="fa-app-boot-card">
-      <img src="assets/fa-logo-dark.png" width="112" height="24" alt="FA Studio"/>
-      <div class="fa-app-spin" aria-hidden="true"></div>
-      <strong>Membuka Sign In…</strong>
-      <span>Gate ke client portal &amp; internal system. URL tetap di fastudio.id/signin.</span>
-    </div>
+  <div id="fa-app-boot" role="status" aria-live="polite" aria-label="Memuat Sign In">
+    <div class="fa-app-spin" aria-hidden="true"></div>
   </div>
   <iframe
     id="fa-app-frame"
@@ -245,10 +236,6 @@ def build_app_html() -> str:
   var host = String(window.location.hostname || '');
   var isLocalHost = host === '127.0.0.1' || host === 'localhost';
   if (isLocalHost) {
-    if (boot) {
-      var tip = boot.querySelector('span');
-      if (tip) tip.textContent = 'Preview lokal: membuka Sign In GAS langsung (iframe diblokir di localhost).';
-    }
     window.setTimeout(function () {
       window.location.replace(gasUrl);
     }, 450);

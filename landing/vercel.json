@@ -1,5 +1,11 @@
 {
   "cleanUrls": true,
+  "rewrites": [
+    { "source": "/signin", "destination": "/app.html" },
+    { "source": "/app", "destination": "/app.html" },
+    { "source": "/ops", "destination": "/app.html" },
+    { "source": "/booking", "destination": "/app.html" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

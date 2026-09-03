@@ -7,6 +7,9 @@
 <meta name="description" content="FA Studio Indonesia — Yours Unlimited Creativity. Film, photo, and 3D production."/>
 <link rel="icon" href="assets/fa-app-icon.png" type="image/png" sizes="512x512"/>
 <link rel="apple-touch-icon" href="assets/fa-app-icon.png" sizes="180x180"/>
+<link rel="preconnect" href="https://script.google.com" crossorigin/>
+<link rel="dns-prefetch" href="https://script.google.com"/>
+<link rel="prefetch" href="/signin"/>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600;1,700;1,800&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="styles.css"/>
 <script>
@@ -219,9 +222,7 @@
       <button type="button" class="lg-button lg-cta-btn" onclick="openStartProject()">Start a conversation</button>
     </section>
 
-
-
-      <footer class="lg-footer">
+    <footer class="lg-footer">
       <nav class="lg-footer-links" aria-label="Footer">
         <button type="button" data-lg-footer-link="home" onclick="setPage('home')">Home</button>
         <button type="button" data-lg-footer-link="gallery" onclick="setPage('gallery')">Work</button>
@@ -233,8 +234,291 @@
       <div class="lg-footer-copy">© 2026 FA Studio Indonesia</div>
     </footer>
 
+
+  </div>
 </div>
+
+<div id="gallery" class="page lg-work-page">
+  <div class="lg-shell">
+
+    <header class="lw-hero lg-reveal">
+      <div class="lg-hero-kicker">
+        <span class="lg-hero-kicker-dot"></span>
+        PORTFOLIO
+        <span class="lg-hero-kicker-line"></span>
+        VISUAL ARCHIVE
+      </div>
+      <div class="lw-hero-title-wrap">
+        <h1 class="lw-hero-title">Stories<br><span>we've made.</span></h1>
+        <p class="lw-hero-copy">Kurasi karya produksi FA Studio — yearbook, music video, commercial, dan kategori lain dalam satu arsip visual yang cinematic.</p>
+      </div>
+      <div class="lw-hero-meta" id="gallery-hero-meta">
+        <span class="lw-hero-filter-name" id="gallery-filter-label">Semua</span>
+      </div>
+    </header>
+
+    <section class="lw-toolbar lg-reveal" style="--enter-delay:.06s" aria-label="Filter kategori">
+      <div class="lw-toolbar-stack">
+        <div class="lw-toolbar-glass">
+          <div class="lw-filters" id="gallery-filters"></div>
+        </div>
+        <div class="lw-toolbar-scroll" aria-hidden="true">
+          <div class="lw-toolbar-scroll-thumb"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lw-content lg-reveal" style="--enter-delay:.12s">
+      <div class="lw-layout" id="gallery-layout"></div>
+    </section>
+
+    <div class="lg-page-end lg-reveal" style="--enter-delay:.18s">
+      <section class="lw-cta-band" id="lw-cta-band">
+        <div class="lw-cta-glass">
+          <div class="lg-label">LET'S CREATE TOGETHER</div>
+          <h2>Got a story<br><em>worth telling?</em></h2>
+          <p>Mulai dari ide sampai frame terakhir — kami bantu wujudkan visual yang memorable.</p>
+          <button type="button" class="lg-button" onclick="openStartProject()">Start a conversation</button>
+        </div>
+      </section>
+
+    <footer class="lg-footer">
+      <nav class="lg-footer-links" aria-label="Footer">
+        <button type="button" data-lg-footer-link="home" onclick="setPage('home')">Home</button>
+        <button type="button" data-lg-footer-link="gallery" onclick="setPage('gallery')">Work</button>
+        <button type="button" data-lg-footer-link="services" onclick="lgNavToSection_('lg-services')">Services</button>
+        <button type="button" data-lg-footer-link="about" onclick="setPage('about')">About</button>
+        <a href="https://www.instagram.com/fastudio.ind/" target="_blank" rel="noopener noreferrer">Instagram</a>
+        <button type="button" onclick="setPage('ops')">Sign In</button>
+      </nav>
+      <div class="lg-footer-copy">© 2026 FA Studio Indonesia</div>
+    </footer>
+
+    </div>
+
+  </div>
 </div>
+
+<div class="gallery-lightbox lw-lightbox" id="gallery-lightbox" aria-hidden="true">
+  <button type="button" class="lw-lb-close" onclick="closeGalleryLightbox()" aria-label="Tutup">×</button>
+  <button type="button" class="lw-lb-nav prev" onclick="stepGalleryLightbox(-1)" aria-label="Sebelumnya">&#8249;</button>
+  <button type="button" class="lw-lb-nav next" onclick="stepGalleryLightbox(1)" aria-label="Berikutnya">&#8250;</button>
+  <div class="lw-lb-panel" onclick="event.stopPropagation()">
+    <div class="lw-lb-media gallery-lightbox-media">
+      <img id="gallery-lightbox-img" src="" alt=""/>
+      <iframe id="gallery-lightbox-yt" class="gallery-lightbox-yt" src="" title="YouTube video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+    </div>
+    <div class="lw-lb-body">
+      <div class="lg-label" id="gallery-lightbox-cat">Kategori</div>
+      <h3 id="gallery-lightbox-title">Judul Project</h3>
+      <p class="lw-lb-desc" id="gallery-lightbox-desc">Deskripsi project.</p>
+      <div class="lw-lb-facts">
+        <div class="lw-lb-fact"><span>Klien</span><span id="gallery-lightbox-client">—</span></div>
+        <div class="lw-lb-fact"><span>Tahun</span><span id="gallery-lightbox-year">—</span></div>
+        <div class="lw-lb-fact"><span>Format</span><span id="gallery-lightbox-format">—</span></div>
+        <div class="lw-lb-fact"><span>Role FA Studio</span><span id="gallery-lightbox-role">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="about" class="page lg-about-page">
+  <div class="lg-shell">
+
+    <header class="la-hero lg-reveal">
+      <div class="lg-hero-kicker">
+        <span class="lg-hero-kicker-dot"></span>
+        ABOUT
+        <span class="lg-hero-kicker-line"></span>
+        FA STUDIO INDONESIA
+      </div>
+      <div class="la-hero-grid">
+        <h1 class="la-hero-title">Not just a<br><span>production house.</span></h1>
+        <div class="la-hero-aside">
+          <p class="la-hero-copy">Berangkat dari passion terhadap visual dan storytelling, FA Studio hadir untuk membantu brand, sekolah, organisasi, dan personal mengabadikan momen melalui karya yang terasa dekat, modern, dan memorable.</p>
+          <p class="la-hero-tagline">We capture the feeling behind every frame.</p>
+        </div>
+      </div>
+      <div class="la-stats la-glass lg-reveal" style="--enter-delay:.06s">
+        <div class="la-stat"><span class="la-stat-val">1×24</span><span class="la-stat-label">Jam respons</span></div>
+        <div class="la-stat"><span class="la-stat-val">100+</span><span class="la-stat-label">Project done</span></div>
+        <div class="la-stat"><span class="la-stat-val">98%</span><span class="la-stat-label">Client puas</span></div>
+        <div class="la-stat"><span class="la-stat-val">2021</span><span class="la-stat-label">Aktif sejak</span></div>
+      </div>
+    </header>
+
+    <section class="la-pillars lg-reveal" style="--enter-delay:.08s" aria-label="Keunggulan FA Studio">
+      <article class="la-pillar la-glass">
+        <span class="la-pillar-ico violet">◷</span>
+        <div>
+          <strong>1×24 Jam Respons</strong>
+          <p>Brief kamu langsung diproses tim kami — tidak perlu menunggu berhari-hari.</p>
+        </div>
+      </article>
+      <article class="la-pillar la-glass">
+        <span class="la-pillar-ico cyan">▤</span>
+        <div>
+          <strong>End-to-End Production</strong>
+          <p>Dari pre-produksi, shooting, editing, hingga final delivery dalam satu tim.</p>
+        </div>
+      </article>
+      <article class="la-pillar la-glass">
+        <span class="la-pillar-ico warm">◆</span>
+        <div>
+          <strong>Client Portal</strong>
+          <p>Akses real-time aset, progress, dan komunikasi project di satu dashboard.</p>
+        </div>
+      </article>
+    </section>
+
+    <section class="la-body lg-reveal" id="lg-about-contact" aria-label="Kontak dan FAQ">
+      <div class="la-section-head">
+        <div class="lg-label">KONTAK &amp; FAQ</div>
+        <h2>Pertanyaan project<br><span>&amp; produksi.</span></h2>
+        <p>Semua yang perlu kamu tahu soal cara kerja, timeline, booking, dan kolaborasi bersama FA Studio Indonesia.</p>
+      </div>
+
+      <div class="la-body-grid">
+
+        <div class="la-faq">
+
+          <div class="la-faq-group la-glass">
+            <div class="la-faq-group-head"><span class="la-dot violet"></span><h3>Booking &amp; Memulai Project</h3></div>
+            <div class="la-faq-list">
+              <details class="la-faq-item" data-faq-group="booking">
+                <summary>Bagaimana cara memulai project dengan FA Studio?</summary>
+                <div class="la-faq-answer">Buat akun lewat <strong>Sign Up</strong>, lalu Sign In. Form Booking Now ada di dashboard client. Isi brief, lalu submit. Tim FA Studio akan follow-up, dan project langsung muncul di dashboard kamu.</div>
+              </details>
+              <details class="la-faq-item" data-faq-group="booking">
+                <summary>Informasi apa saja yang perlu disiapkan saat booking?</summary>
+                <div class="la-faq-answer">Booking Now khusus klien yang sudah Sign In. Siapkan: nama brand/sekolah, nomor WhatsApp, peran kamu, layanan yang dipilih, total harga kesepakatan, PIC tim FA, jadwal shooting, dan brief singkat project.</div>
+              </details>
+              <details class="la-faq-item" data-faq-group="booking">
+                <summary>Apakah FA Studio menerima project dari luar Jakarta?</summary>
+                <div class="la-faq-answer">Ya. FA Studio melayani project dari berbagai kota di Indonesia. Untuk shooting di luar area, biaya transportasi dan akomodasi crew akan dibahas saat pre-production.</div>
+              </details>
+              <details class="la-faq-item" data-faq-group="booking">
+                <summary>Apakah bisa konsultasi dulu sebelum booking?</summary>
+                <div class="la-faq-answer">Tentu. Kamu bisa konsultasi awal via WhatsApp atau email untuk membahas kebutuhan project sebelum mengisi form booking resmi.</div>
+              </details>
+              <details class="la-faq-item" data-faq-group="booking">
+                <summary>Bagaimana FA Studio melindungi data pribadi saya?</summary>
+                <div class="la-faq-answer">Saat Sign Up, kamu wajib menyetujui Kebijakan Privasi sesuai UU No. 27 Tahun 2022. Data hanya diproses untuk akun, komunikasi, produksi, dan penagihan.</div>
+              </details>
+            </div>
+          </div>
+
+          <div class="la-faq-group la-glass">
+            <div class="la-faq-group-head"><span class="la-dot cyan"></span><h3>Produksi &amp; Timeline</h3></div>
+            <div class="la-faq-list">
+              <details class="la-faq-item" data-faq-group="production">
+                <summary>Berapa lama proses produksi?</summary>
+                <div class="la-faq-answer">Timeline disesuaikan dengan scope, kebutuhan, dan ketersediaan tim setelah brief direview — tidak dipatok secara kaku.</div>
+              </details>
+              <details class="la-faq-item" data-faq-group="production">
+                <summary>Apakah ada layanan fast-track?</summary>
+                <div class="la-faq-answer">Ya, untuk project urgent tersedia opsi fast-track dengan biaya tambahan. Hubungi tim kami via WhatsApp untuk cek ketersediaan jadwal crew.</div>
+              </details>
+            </div>
+          </div>
+
+          <div class="la-faq-group la-glass">
+            <div class="la-faq-group-head"><span class="la-dot warm"></span><h3>Pembayaran</h3></div>
+            <div class="la-faq-list">
+              <details class="la-faq-item" data-faq-group="payment">
+                <summary>Bagaimana skema pembayaran?</summary>
+                <div class="la-faq-answer">Skema pembayaran mengikuti kesepakatan bersama tim internal FA Studio. Detail tahapan dan nominal disepakati sebelum produksi dimulai dan tercantum di invoice resmi.</div>
+              </details>
+            </div>
+          </div>
+        </div>
+
+        <aside class="la-sidebar">
+          <div class="la-contact la-glass">
+            <div class="lg-label">Hubungi kami</div>
+            <p class="la-contact-lead">Tim kami siap bantu dari konsultasi awal sampai delivery final.</p>
+            <a class="la-contact-row" href="https://wa.me/6282174181369" target="_blank" rel="noopener noreferrer">
+              <span class="la-contact-ico wa">WA</span>
+              <span class="la-contact-body"><strong>+62 821-7418-1369</strong><small>Respons dalam 1×24 jam</small></span>
+            </a>
+            <a class="la-contact-row" href="mailto:fastudioindonesia@gmail.com">
+              <span class="la-contact-ico mail">@</span>
+              <span class="la-contact-body"><strong>fastudioindonesia@gmail.com</strong><small>Inquiry formal &amp; brief</small></span>
+            </a>
+            <div class="la-contact-row">
+              <span class="la-contact-ico loc">⌂</span>
+              <span class="la-contact-body"><strong>Jl. Pembina, Tanah Merah</strong><small>Kontak kami untuk detail lokasi</small></span>
+            </div>
+            <div class="la-contact-actions">
+              <button type="button" class="lg-button" onclick="openStartProject()">Make booking</button>
+              <button type="button" class="la-contact-signin" onclick="setPage('ops')">Sign In</button>
+            </div>
+          </div>
+
+          <div class="la-wa la-glass">
+            <p>Masih ada pertanyaan?<br>Chat langsung via WhatsApp.</p>
+            <a class="la-wa-link" href="https://wa.me/6282174181369" target="_blank" rel="noopener noreferrer">Chat sekarang</a>
+          </div>
+        </aside>
+
+      </div>
+    </section>
+
+
+    <div class="lg-page-end lg-reveal" style="--enter-delay:.16s">
+      <section class="lw-cta-band">
+        <div class="lw-cta-glass">
+          <div class="lg-label">LET'S CREATE TOGETHER</div>
+          <h2>Ready to start<br><em>your project?</em></h2>
+          <p>Booking lewat client portal atau hubungi tim kami — kami bantu dari ide sampai frame terakhir.</p>
+          <button type="button" class="lg-button" onclick="openStartProject()">Make booking</button>
+        </div>
+      </section>
+
+    <footer class="lg-footer">
+      <nav class="lg-footer-links" aria-label="Footer">
+        <button type="button" data-lg-footer-link="home" onclick="setPage('home')">Home</button>
+        <button type="button" data-lg-footer-link="gallery" onclick="setPage('gallery')">Work</button>
+        <button type="button" data-lg-footer-link="services" onclick="lgNavToSection_('lg-services')">Services</button>
+        <button type="button" data-lg-footer-link="about" onclick="setPage('about')">About</button>
+        <a href="https://www.instagram.com/fastudio.ind/" target="_blank" rel="noopener noreferrer">Instagram</a>
+        <button type="button" onclick="setPage('ops')">Sign In</button>
+      </nav>
+      <div class="lg-footer-copy">© 2026 FA Studio Indonesia</div>
+    </footer>
+
+    </div>
+
+  </div>
+</div>
+
+<nav class="mobile-tabbar" aria-label="Navigasi utama">
+  <button type="button" class="mobile-tab active" data-page="home" onclick="setPage('home'); event.stopPropagation();">
+    <span class="mobile-tab-ico" aria-hidden="true">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M10.55 2.533a2.25 2.25 0 0 1 2.9 0l6.75 5.695c.508.427.8 1.056.8 1.72V19.75A2.25 2.25 0 0 1 18.75 22H15.5a1.5 1.5 0 0 1-1.5-1.5v-4.25a.75.75 0 0 0-.75-.75h-2.5a.75.75 0 0 0-.75.75V20.5A1.5 1.5 0 0 1 8.5 22H5.25A2.25 2.25 0 0 1 3 19.75V9.948c0-.664.292-1.293.8-1.72z"/></svg>
+    </span>
+    <span class="mobile-tab-label">Home</span>
+  </button>
+  <button type="button" class="mobile-tab" data-page="gallery" onclick="setPage('gallery'); event.stopPropagation();">
+    <span class="mobile-tab-ico" aria-hidden="true">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+    </span>
+    <span class="mobile-tab-label">Work</span>
+  </button>
+  <button type="button" class="mobile-tab" data-page="ops" onclick="setPage('ops'); event.stopPropagation();" id="mobile-tab-signin">
+    <span class="mobile-tab-ico" aria-hidden="true">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7.5" r="3.75"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/></svg>
+    </span>
+    <span class="mobile-tab-label" id="mobile-tab-signin-label">Sign In</span>
+  </button>
+  <button type="button" class="mobile-tab" data-page="about" onclick="setPage('about'); event.stopPropagation();">
+    <span class="mobile-tab-ico" aria-hidden="true">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="8.01"/><path d="M12 11.5v5"/></svg>
+    </span>
+    <span class="mobile-tab-label">About</span>
+  </button>
+</nav>
+
 <script src="config.js"></script>
 <script src="logos.js"></script>
 <script src="landing.js"></script>

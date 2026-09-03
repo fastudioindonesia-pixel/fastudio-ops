@@ -8,6 +8,7 @@ function selectOperationAccess(mode) {
   if (gate) gate.classList.toggle('is-client-shell', mode === 'client');
   if (mode !== 'client' && typeof syncAuthBrandLogos === 'function') syncAuthBrandLogos();
   if (mode === 'client') {
+    document.body.classList.remove('login-mode-signin', 'login-mode-signup');
     showClientPortalDashboard(true);
     if (typeof renderClientPortalHome === 'function') renderClientPortalHome();
     else if (CLIENT_PORTAL_STATE.project) renderClientPortalDashboard(CLIENT_PORTAL_STATE.project);

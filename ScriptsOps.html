@@ -3,15 +3,38 @@ function toggleOperationShell(isAllowed) {
   var gate = document.getElementById('ops-access-gate');
   var sidebar = document.querySelector('#ops > .ops-sidebar');
   var main = document.querySelector('#ops > .ops-main');
-  if (gate) gate.style.display = isAllowed ? 'none' : 'flex';
-  if (sidebar) sidebar.style.display = isAllowed ? 'flex' : 'none';
-  if (main) main.style.display = isAllowed ? 'flex' : 'none';
   var ops = document.getElementById('ops');
+  // Class first — IndexAuth CSS keys off .ops-shell-open (beats stale !important rules).
   if (ops) {
     ops.classList.toggle('ops-shell-open', !!isAllowed);
     if (!isAllowed) {
       ops.classList.remove('ops-sidebar-expanded');
       document.body.classList.remove('ops-sidebar-open');
+    }
+  }
+  if (gate) {
+    if (isAllowed) {
+      gate.style.setProperty('display', 'none', 'important');
+    } else {
+      gate.style.setProperty('display', 'flex', 'important');
+    }
+  }
+  if (sidebar) {
+    sidebar.style.setProperty('display', isAllowed ? 'flex' : 'none', 'important');
+  }
+  if (main) {
+    main.style.setProperty('display', isAllowed ? 'flex' : 'none', 'important');
+  }
+  if (isAllowed) {
+    document.body.classList.remove('login-mode-signin', 'login-mode-signup');
+    document.body.classList.add('auth-gated');
+    document.body.classList.remove('public-site');
+  } else if (!document.getElementById('ops-access-gate') ||
+             !document.getElementById('ops-access-gate').classList.contains('is-client-shell')) {
+    // Login gate again (not client portal). Keep client portal auth-gated via updateAuthNavLabel.
+    if (typeof isAuthenticatedSession === 'function' && !isAuthenticatedSession()) {
+      document.body.classList.remove('auth-gated');
+      document.body.classList.add('public-site');
     }
   }
   updateOpsSidebarToggle();
@@ -1043,6 +1066,8 @@ function openOperationSystem() {
   }
   _opsUnlocked = true;
   _internalPayUnlocked = true;
+  // Gate CSS + nav before paint of shell, so login card cannot linger over dashboard.
+  if (typeof applyPublicNavGate === 'function') applyPublicNavGate();
   toggleOperationShell(true);
   applyOpsNavPermissions();
   initPaymentAuth();
@@ -1114,7 +1139,7 @@ function syncAuthBrandLogos() {
     lightSrc = navLight && navLight.getAttribute('src');
   }
   if (!lightSrc) return;
-  document.querySelectorAll('.sb-brand-logo-light, .ops-header-logo-light, #ops-login-panel .auth-logo-light, #ops-login-panel .auth-logo, #ops-login-panel .lg-login-logo').forEach(function(img) {
+  document.querySelectorAll('.sb-brand-logo-light, .ops-header-logo-light, #ops-login-panel .auth-logo-light, #ops-login-panel .auth-logo, #ops-login-panel .lg-login-logo, #ops-login-panel [data-lg-logo="black"]').forEach(function(img) {
     img.setAttribute('src', lightSrc);
   });
 }

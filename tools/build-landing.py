@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Assemble a static Vercel landing site from the GAS public landing sources.
+"""Assemble the Vercel public site + login gate for FA Studio.
+
+Architecture (locked):
+  Vercel  → Home, Work, Services, About, and the Login gate URL (/signin)
+  GAS     → everything after the login gate: Sign In/Up UI, client portal,
+            and the full internal ops system (dashboard, billing, production, …)
+
+The login page is served from Vercel (`/signin`) so the address bar stays on
+fastudio.id. Behind that URL, a same-origin shell embeds the GAS auth/ops app
+(iframe). Marketing pages never load GAS.
 
 Usage (from repo root):
   python3 tools/build-landing.py
-
-Edit landing sources in the usual places (PageHome.html, Styles.html, ScriptsCore.html,
-PartialsNav.html, PartialsLgFooter.html), then re-run this script before deploy.
 """
 
 from __future__ import annotations
@@ -19,6 +25,8 @@ OUT = ROOT / "landing"
 ASSETS_SRC = ROOT / "assets"
 ASSETS_OUT = OUT / "assets"
 
+INCLUDE_RE = re.compile(r"<\?!=\s*include\(\s*[\"']([^\"']+)[\"']\s*\)\s*;?\s*\?>")
+
 
 def strip_style_wrapper(text: str) -> str:
     text = text.strip()
@@ -26,61 +34,75 @@ def strip_style_wrapper(text: str) -> str:
     return m.group(1).strip() + "\n" if m else text
 
 
-def strip_script_wrapper(text: str) -> str:
-    text = text.strip()
-    m = re.match(r"^<script[^>]*>(.*)</script>\s*$", text, flags=re.I | re.S)
-    return m.group(1).strip() + "\n" if m else text
+def resolve_includes(html: str) -> str:
+    """Expand <?!= include('Name') ?> from root HTML partials; drop unknown includes."""
+
+    def repl(match: re.Match[str]) -> str:
+        name = match.group(1)
+        path = ROOT / f"{name}.html"
+        if not path.exists():
+            return ""
+        return resolve_includes(path.read_text(encoding="utf-8"))
+
+    return INCLUDE_RE.sub(repl, html)
+
+
+def inject_footer_if_missing(html: str, footer: str) -> str:
+    if "lg-footer" in html:
+        return html
+    html = html.rstrip()
+    replaced = re.sub(
+        r"(</div>\s*</div>\s*)$",
+        footer + r"\n\1",
+        html,
+        count=1,
+    )
+    if replaced != html:
+        return replaced
+    return html + "\n" + footer + "\n"
 
 
 def extract_scripts_core_landing(raw: str) -> str:
-    """Pull landing-only JS from ScriptsCore.html (no gallery / ops)."""
+    """Pull public-site JS from ScriptsCore (landing + gallery + about; no ops)."""
     lines = raw.splitlines()
-    # Drop outer <script> if present
     if lines and lines[0].strip().lower().startswith("<script"):
         lines = lines[1:]
     if lines and lines[-1].strip().lower().startswith("</script"):
         lines = lines[:-1]
 
     chunks: list[str] = []
-    # Constant used by CTA year counter
     chunks.append("var FA_STUDIO_SINCE_YEAR_ = 2021;\n")
 
-    # LG landing block: LG_SERVICES … end of animateCtaCounters_ (before GALLERY_*)
+    # Home landing: LG_SERVICES … before GALLERY_*
     start = next(i for i, l in enumerate(lines) if l.startswith("var LG_SERVICES = ["))
-    end = next(i for i, l in enumerate(lines) if l.startswith("var GALLERY_CATEGORIES = ["))
-    chunks.append("\n".join(lines[start:end]).rstrip() + "\n")
+    gallery_start = next(
+        i for i, l in enumerate(lines) if l.startswith("var GALLERY_CATEGORIES = [")
+    )
+    chunks.append("\n".join(lines[start:gallery_start]).rstrip() + "\n")
 
-    # Mobile rail autoplay (used by initLandingPage)
-    rail_start = next(i for i, l in enumerate(lines) if l.startswith("var _mobileRailAuto = null;"))
-    rail_end = next(i for i, l in enumerate(lines) if l.startswith("function galleryCategoryLabel"))
-    chunks.append("\n".join(lines[rail_start:rail_end]).rstrip() + "\n")
+    # Gallery + mobile rail + about (through initFaqAccordion), stop before auth/ops
+    auth_start = next(
+        i for i, l in enumerate(lines) if l.startswith("function isAuthenticatedSession")
+    )
+    chunks.append("\n".join(lines[gallery_start:auth_start]).rstrip() + "\n")
     return "\n".join(chunks)
-
-
-def patch_home_html(html: str) -> str:
-    html = re.sub(r"<\?!=\s*include\([^)]+\)\s*;?\s*\?>", "", html)
-    # Play button / service cards still call setPage — stubs handle that.
-    return html
 
 
 def build_index() -> str:
     nav = (ROOT / "PartialsNav.html").read_text(encoding="utf-8")
-    home = patch_home_html((ROOT / "PageHome.html").read_text(encoding="utf-8"))
+    mobile = (ROOT / "PartialsMobileNav.html").read_text(encoding="utf-8")
     footer = (ROOT / "PartialsLgFooter.html").read_text(encoding="utf-8")
-    # Inject footer where include was (already stripped) — append before closing shell if missing
-    if "lg-footer" not in home:
-        home = home.rstrip()
-        if home.endswith("</div>"):
-            # close lg-shell + #home already in file; insert footer before last two closes is fragile —
-            # PageHome ends with include then </div></div>. After strip, put footer before final closes.
-            home = re.sub(
-                r"(</div>\s*</div>\s*)$",
-                footer + r"\n\1",
-                home,
-                count=1,
-            )
-        else:
-            home = home + "\n" + footer + "\n"
+
+    home = resolve_includes((ROOT / "PageHome.html").read_text(encoding="utf-8"))
+    home = inject_footer_if_missing(home, footer)
+
+    gallery = resolve_includes((ROOT / "PageGallery.html").read_text(encoding="utf-8"))
+    # Gallery page should not start active
+    gallery = gallery.replace('class="page lg-work-page"', 'class="page lg-work-page"', 1)
+    if 'class="page active' in gallery:
+        gallery = gallery.replace("page active", "page", 1)
+
+    about = resolve_includes((ROOT / "PageAbout.html").read_text(encoding="utf-8"))
 
     return f"""<!DOCTYPE html>
 <html lang="id">
@@ -91,6 +113,9 @@ def build_index() -> str:
 <meta name="description" content="FA Studio Indonesia — Yours Unlimited Creativity. Film, photo, and 3D production."/>
 <link rel="icon" href="assets/fa-app-icon.png" type="image/png" sizes="512x512"/>
 <link rel="apple-touch-icon" href="assets/fa-app-icon.png" sizes="180x180"/>
+<link rel="preconnect" href="https://script.google.com" crossorigin/>
+<link rel="dns-prefetch" href="https://script.google.com"/>
+<link rel="prefetch" href="/signin"/>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600;1,700;1,800&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="styles.css"/>
 <script>
@@ -103,6 +128,9 @@ def build_index() -> str:
 <body class="public-site">
 {nav}
 {home}
+{gallery}
+{about}
+{mobile}
 <script src="config.js"></script>
 <script src="logos.js"></script>
 <script src="landing.js"></script>
@@ -111,9 +139,155 @@ def build_index() -> str:
 """
 
 
+def build_app_html() -> str:
+    """Vercel login gate: branded shell + GAS iframe for auth + post-login system."""
+    return """<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Sign In — FA Studio Indonesia</title>
+<meta name="description" content="Sign in to FA Studio Indonesia. Login gate for client portal and internal ops."/>
+<link rel="icon" href="assets/fa-app-icon.png" type="image/png" sizes="512x512"/>
+<link rel="apple-touch-icon" href="assets/fa-app-icon.png" sizes="180x180"/>
+<link rel="preconnect" href="https://script.google.com" crossorigin/>
+<link rel="dns-prefetch" href="https://script.google.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  html, body { margin: 0; height: 100%; background: #f8f8f6; }
+  body {
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    color: #070707;
+    overflow: hidden;
+  }
+  #fa-app-boot {
+    position: fixed; inset: 0; z-index: 2;
+    display: flex; align-items: center; justify-content: center;
+    background: #f8f8f6;
+    transition: opacity .28s ease, visibility .28s ease;
+  }
+  #fa-app-boot.is-done { opacity: 0; visibility: hidden; pointer-events: none; }
+  .fa-app-boot-card {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 14px; text-align: center; padding: 28px;
+  }
+  .fa-app-boot-card img { width: 112px; height: auto; }
+  .fa-app-boot-card strong { font-size: 17px; letter-spacing: -.02em; }
+  .fa-app-boot-card span { font-size: 13px; opacity: .62; max-width: 300px; line-height: 1.45; }
+  .fa-app-spin {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid rgba(7,7,7,.12); border-top-color: #070707;
+    animation: faAppSpin .7s linear infinite;
+  }
+  @keyframes faAppSpin { to { transform: rotate(360deg); } }
+  #fa-app-frame {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    border: 0; background: #f8f8f6; z-index: 1;
+  }
+  #fa-app-fallback {
+    display: none; position: fixed; inset: 0; z-index: 3;
+    align-items: center; justify-content: center;
+    background: #f8f8f6; padding: 24px; text-align: center;
+  }
+  #fa-app-fallback.is-on { display: flex; }
+  #fa-app-fallback a {
+    color: #070707; font-weight: 600;
+  }
+</style>
+</head>
+<body>
+  <div id="fa-app-boot" role="status" aria-live="polite">
+    <div class="fa-app-boot-card">
+      <img src="assets/fa-logo-dark.png" width="112" height="24" alt="FA Studio"/>
+      <div class="fa-app-spin" aria-hidden="true"></div>
+      <strong>Membuka Sign In…</strong>
+      <span>Gate ke client portal &amp; internal system. URL tetap di fastudio.id/signin.</span>
+    </div>
+  </div>
+  <iframe
+    id="fa-app-frame"
+    title="FA Studio Sign In"
+    allow="clipboard-write"
+    referrerpolicy="no-referrer-when-downgrade"
+  ></iframe>
+  <div id="fa-app-fallback">
+    <div>
+      <p>Login gate belum bisa dimuat di halaman ini.</p>
+      <p><a id="fa-app-fallback-link" href="#">Buka langsung</a> · <a href="/">Kembali ke beranda</a></p>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script>
+(function () {
+  var boot = document.getElementById('fa-app-boot');
+  var frame = document.getElementById('fa-app-frame');
+  var fallback = document.getElementById('fa-app-fallback');
+  var fallbackLink = document.getElementById('fa-app-fallback-link');
+  var params = new URLSearchParams(window.location.search || '');
+  var page = String(params.get('page') || 'ops').trim().toLowerCase();
+  if (page === 'faq-contact') page = 'about';
+  if (page === 'booking' || page === 'login' || page === 'signin' || page === 'create') page = 'ops';
+  if (page !== 'ops' && page !== 'reset-password') page = 'ops';
+
+  var base = String(window.GAS_APP_URL || '').replace(/\\/$/, '');
+  if (!base || base.indexOf('PASTE_') === 0) {
+    if (boot) boot.classList.add('is-done');
+    if (fallback) fallback.classList.add('is-on');
+    return;
+  }
+
+  // GAS IndexAuth: login UI + (after auth) client portal / internal ops.
+  var gasUrl = base + '?page=' + encodeURIComponent(page);
+  if (fallbackLink) fallbackLink.href = gasUrl;
+
+  // Local HTTP preview: Google often serves a blank frame inside iframe.
+  // Jump top-level to GAS so login UI is testable; production HTTPS keeps iframe.
+  var host = String(window.location.hostname || '');
+  var isLocalHost = host === '127.0.0.1' || host === 'localhost';
+  if (isLocalHost) {
+    if (boot) {
+      var tip = boot.querySelector('span');
+      if (tip) tip.textContent = 'Preview lokal: membuka Sign In GAS langsung (iframe diblokir di localhost).';
+    }
+    window.setTimeout(function () {
+      window.location.replace(gasUrl);
+    }, 450);
+    return;
+  }
+
+  var done = false;
+  function hideBoot() {
+    if (done) return;
+    done = true;
+    if (boot) boot.classList.add('is-done');
+  }
+
+  frame.addEventListener('load', function () {
+    window.setTimeout(hideBoot, 180);
+  });
+  window.setTimeout(hideBoot, 12000);
+  window.setTimeout(function () {
+    if (!done && fallback) fallback.classList.add('is-on');
+  }, 20000);
+
+  frame.src = gasUrl;
+
+  try {
+    document.title = (page === 'reset-password' ? 'Reset Password' : 'Sign In') + ' — FA Studio Indonesia';
+  } catch (e) {}
+})();
+  </script>
+</body>
+</html>
+"""
+
+
 def build_bridge_js() -> str:
     return r"""
-/* Bridge: landing stays static; app actions open the GAS web app. */
+/* Bridge:
+ * Vercel = Home / Work / Services / About (marketing)
+ * /signin = login gate on Vercel → GAS handles Sign In + client portal + internal ops
+ */
 function gasAppUrl_(page) {
   var base = (window.GAS_APP_URL || '').replace(/\/$/, '');
   if (!base || base.indexOf('PASTE_') === 0) {
@@ -122,6 +296,15 @@ function gasAppUrl_(page) {
   }
   if (!page || page === 'home') return base;
   return base + '?page=' + encodeURIComponent(page);
+}
+
+/** Canonical login gate on Vercel. Aliases /app /ops /booking also work via vercel.json. */
+function localSignInPath_(page) {
+  var p = String(page || 'ops').trim().toLowerCase();
+  if (p === 'booking' || p === 'login' || p === 'signin' || p === 'create') p = 'ops';
+  if (p !== 'ops' && p !== 'reset-password') p = 'ops';
+  if (p === 'ops') return '/signin';
+  return '/signin?page=' + encodeURIComponent(p);
 }
 
 function warmGasApp_() {
@@ -135,42 +318,34 @@ function warmGasApp_() {
     img.referrerPolicy = 'no-referrer';
     img.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_warm=' + Date.now();
   } catch (e2) {}
-}
-
-function showGasRedirectOverlay_() {
-  if (document.getElementById('fa-gas-redirect')) return;
-  var el = document.createElement('div');
-  el.id = 'fa-gas-redirect';
-  el.setAttribute('role', 'status');
-  el.innerHTML = '<div class="fa-gas-redirect-card"><div class="fa-gas-redirect-spin" aria-hidden="true"></div><strong>Membuka aplikasi…</strong><span>Menyiapkan halaman login FA Studio</span></div>';
-  var css = document.createElement('style');
-  css.textContent = '#fa-gas-redirect{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(248,248,246,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);font-family:"Plus Jakarta Sans",system-ui,sans-serif;color:#070707}'
-    + '.fa-gas-redirect-card{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:28px}'
-    + '.fa-gas-redirect-card strong{font-size:18px;letter-spacing:-.02em}'
-    + '.fa-gas-redirect-card span{font-size:13px;opacity:.62}'
-    + '.fa-gas-redirect-spin{width:28px;height:28px;border-radius:50%;border:2px solid rgba(7,7,7,.12);border-top-color:#070707;animation:faGasSpin .7s linear infinite}'
-    + '@keyframes faGasSpin{to{transform:rotate(360deg)}}';
-  document.head.appendChild(css);
-  document.body.appendChild(el);
+  try {
+    fetch('/signin', { credentials: 'omit', cache: 'force-cache', keepalive: true });
+  } catch (e3) {}
 }
 
 function goToGasApp(page) {
-  var url = gasAppUrl_(page || 'ops');
-  if (!url) {
+  if (!gasAppUrl_(page || 'ops')) {
     alert('URL aplikasi belum di-set. Isi GAS_APP_URL di landing/config.js, lalu rebuild/deploy ulang.');
     return;
   }
-  showGasRedirectOverlay_();
   warmGasApp_();
-  window.setTimeout(function() { window.location.href = url; }, 40);
+  // Enter the login gate (Vercel URL). GAS takes over auth + post-login system inside.
+  window.location.href = localSignInPath_(page || 'ops');
+}
+
+function getActivePageId() {
+  var gallery = document.getElementById('gallery');
+  if (gallery && gallery.classList.contains('active')) return 'gallery';
+  var about = document.getElementById('about');
+  if (about && about.classList.contains('active')) return 'about';
+  var home = document.getElementById('home');
+  if (home && home.classList.contains('active')) return 'home';
+  var page = document.querySelector('.page.active');
+  return page ? page.id : 'home';
 }
 
 function goPublicHome() {
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-  var home = document.getElementById('home');
-  if (home) home.classList.add('active');
-  if (typeof updateLgNavActive_ === 'function') updateLgNavActive_('home');
-  if (typeof updateLgFooterLinks_ === 'function') updateLgFooterLinks_('home');
+  setPage('home');
 }
 
 function openStartProject() {
@@ -179,34 +354,85 @@ function openStartProject() {
 
 function setPage(page) {
   if (page === 'faq-contact') page = 'about';
-  if (page === 'booking' || page === 'ops' || page === 'reset-password') {
-    goToGasApp(page === 'booking' ? 'ops' : page);
+  if (page === 'booking' || page === 'ops' || page === 'reset-password' || page === 'signin' || page === 'login') {
+    goToGasApp(page === 'booking' || page === 'signin' || page === 'login' ? 'ops' : page);
     return;
   }
-  if (page === 'gallery') {
-    var work = document.getElementById('lg-work');
-    if (work) work.scrollIntoView({ behavior: 'smooth' });
-    if (typeof updateLgNavActive_ === 'function') updateLgNavActive_('gallery');
-    if (typeof updateLgFooterLinks_ === 'function') updateLgFooterLinks_('gallery');
+
+  var current = getActivePageId();
+  if (current === page) {
+    if (page === 'home') window.scrollTo(0, 0);
     return;
   }
-  if (page === 'about') {
-    var about = document.getElementById('lg-about');
-    if (about) about.scrollIntoView({ behavior: 'smooth' });
-    if (typeof updateLgNavActive_ === 'function') updateLgNavActive_('about');
-    if (typeof updateLgFooterLinks_ === 'function') updateLgFooterLinks_('about');
-    return;
+
+  if (typeof stopMobileRailAutoplay_ === 'function') stopMobileRailAutoplay_();
+  if (typeof stopShowreelLoop_ === 'function') stopShowreelLoop_();
+  if (typeof closeGalleryLightbox === 'function') {
+    try { closeGalleryLightbox(); } catch (e0) {}
   }
-  goPublicHome();
+
+  document.querySelectorAll('.page.active').forEach(function(el) {
+    el.classList.remove('active');
+  });
+
+  var targetId = page === 'home' ? 'home' : page;
+  var target = document.getElementById(targetId);
+  if (target) target.classList.add('active');
+
+  if (typeof updateLgNavActive_ === 'function') updateLgNavActive_(page);
+  if (typeof updateLgFooterLinks_ === 'function') updateLgFooterLinks_(page);
+  document.querySelectorAll('.mobile-tab').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-page') === page);
+  });
+
+  window.scrollTo(0, 0);
+
+  if (page === 'gallery' && typeof initGallery === 'function') initGallery();
+  if (page === 'about' && typeof initAboutPage === 'function') initAboutPage();
+  if (page === 'home') {
+    if (typeof initLandingPage === 'function') initLandingPage();
+    if (typeof startShowreelLoop_ === 'function') startShowreelLoop_();
+  }
+
+  try {
+    var url = new URL(window.location.href);
+    if (page === 'home') url.searchParams.delete('page');
+    else url.searchParams.set('page', page);
+    window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+  } catch (e1) {}
 }
 
 document.addEventListener('DOMContentLoaded', function() {
   document.body.classList.add('public-site');
-  var home = document.getElementById('home');
-  if (home) home.classList.add('active');
-  if (typeof initLandingPage === 'function') initLandingPage();
-  if (typeof updateLgNavActive_ === 'function') updateLgNavActive_('home');
-  if (typeof updateLgFooterLinks_ === 'function') updateLgFooterLinks_('home');
+
+  var initial = 'home';
+  try {
+    var params = new URLSearchParams(window.location.search || '');
+    var q = String(params.get('page') || '').trim().toLowerCase();
+    if (q === 'faq-contact') q = 'about';
+    if (q === 'gallery' || q === 'about' || q === 'home') initial = q;
+    if (q === 'ops' || q === 'booking' || q === 'reset-password' || q === 'signin' || q === 'login') {
+      goToGasApp(q === 'booking' || q === 'signin' || q === 'login' ? 'ops' : q);
+      return;
+    }
+  } catch (e2) {}
+
+  document.querySelectorAll('.page.active').forEach(function(el) {
+    el.classList.remove('active');
+  });
+  var startEl = document.getElementById(initial === 'home' ? 'home' : initial);
+  if (startEl) startEl.classList.add('active');
+
+  if (initial === 'home' && typeof initLandingPage === 'function') initLandingPage();
+  if (initial === 'gallery' && typeof initGallery === 'function') initGallery();
+  if (initial === 'about' && typeof initAboutPage === 'function') initAboutPage();
+
+  if (typeof updateLgNavActive_ === 'function') updateLgNavActive_(initial);
+  if (typeof updateLgFooterLinks_ === 'function') updateLgFooterLinks_(initial);
+  document.querySelectorAll('.mobile-tab').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-page') === initial);
+  });
+
   warmGasApp_();
   var cta = document.getElementById('lg-nav-cta');
   if (cta) {
@@ -305,6 +531,12 @@ def write_vercel_json() -> None:
     (OUT / "vercel.json").write_text(
         """{
   "cleanUrls": true,
+  "rewrites": [
+    { "source": "/signin", "destination": "/app.html" },
+    { "source": "/app", "destination": "/app.html" },
+    { "source": "/ops", "destination": "/app.html" },
+    { "source": "/booking", "destination": "/app.html" }
+  ],
   "headers": [
     {
       "source": "/(.*)",
@@ -322,25 +554,44 @@ def write_vercel_json() -> None:
 
 def write_readme() -> None:
     (OUT / "README.md").write_text(
-        """# FA Studio — Landing (Vercel)
+        """# FA Studio — Public site + login gate (Vercel)
 
-Static marketing site. Ops / login / booking tetap di Google Apps Script.
+## Architecture
+
+| Zone | Host | Isi |
+|------|------|-----|
+| Marketing | Vercel (`fastudio.id`) | Home, Work, Services, About |
+| Login gate | Vercel (`/signin`) | Halaman login di domain FA Studio |
+| System | GAS (di balik gate) | Sign In/Up, client portal, internal ops / bispro |
+
+Setelah lewat gate login, seluruh dashboard client dan internal system di-handle GAS.
+URL browser tetap di `fastudio.id/signin` (shell Vercel + iframe GAS).
 
 ## Customize dari repo
 
-1. Edit sumber di root: `PageHome.html`, `PartialsNav.html`, `PartialsLgFooter.html`, CSS landing di `Styles.html`, logika di `ScriptsCore.html` (blok `LG_*`).
-2. Jalankan: `python3 tools/build-landing.py`
-3. Set URL GAS di `landing/config.js` (`GAS_APP_URL`).
-4. Deploy folder `landing/` ke Vercel (Root Directory = `landing`).
+1. Edit sumber marketing di root: `PageHome.html`, `PageGallery.html`, `PageAbout.html`,
+   `PartialsNav.html`, `PartialsMobileNav.html`, `PartialsLgFooter.html`,
+   `PartialsAboutFaq.html`, CSS di `Styles.html`, logika publik di `ScriptsCore.html`.
+2. Auth/ops tetap di GAS: `IndexAuth.html`, `PageOps.html`, `ScriptsOps.html`, `Kode.js`, …
+3. Jalankan: `python3 tools/build-landing.py`
+4. Set `GAS_APP_URL` di `landing/config.js`.
+5. Deploy folder `landing/` ke Vercel (Root Directory = `landing`).
 
-## Deploy Vercel
+## Routes
 
-1. Import repo ke Vercel.
-2. **Root Directory:** `landing`
-3. Framework: Other — no build command.
-4. Tambahkan custom domain `fastudio.id`.
+| Path | Isi |
+|------|-----|
+| `/` | Home · Work · Services · About (+ mobile nav) |
+| `/signin` | **Login gate** → GAS auth + post-login system |
+| `/signin?page=reset-password` | Reset password (masih di gate) |
+| `/app`, `/ops`, `/booking` | Alias → `/signin` |
 
-CTA **Create Project** / **Sign In** mengarah ke `GAS_APP_URL`.
+## Deploy
+
+1. Vercel Root Directory = `landing`
+2. Custom domain `fastudio.id`
+3. GAS `doGet` harus `XFrameOptionsMode.ALLOWALL`
+4. Setelah ubah auth shell (`IndexAuth`), `clasp push` (+ deploy web app bila perlu)
 """,
         encoding="utf-8",
     )
@@ -356,6 +607,7 @@ def main() -> None:
     (OUT / "landing.js").write_text(landing_js, encoding="utf-8")
     (OUT / "logos.js").write_text(build_logos_js(), encoding="utf-8")
     (OUT / "index.html").write_text(build_index(), encoding="utf-8")
+    (OUT / "app.html").write_text(build_app_html(), encoding="utf-8")
 
     copy_assets()
     write_config_if_needed()
@@ -363,7 +615,8 @@ def main() -> None:
     write_readme()
 
     print(f"Built {OUT}")
-    print("Next: set GAS_APP_URL in landing/config.js, then deploy Root Directory = landing on Vercel.")
+    print("Vercel: / = marketing · /signin = login gate → GAS system")
+    print("Next: confirm GAS_APP_URL in landing/config.js, then deploy Root Directory = landing.")
 
 
 if __name__ == "__main__":

@@ -1,19 +1,38 @@
-# FA Studio — Landing (Vercel)
+# FA Studio — Public site + login gate (Vercel)
 
-Static marketing site. Ops / login / booking tetap di Google Apps Script.
+## Architecture
+
+| Zone | Host | Isi |
+|------|------|-----|
+| Marketing | Vercel (`fastudio.id`) | Home, Work, Services, About |
+| Login gate | Vercel (`/signin`) | Halaman login di domain FA Studio |
+| System | GAS (di balik gate) | Sign In/Up, client portal, internal ops / bispro |
+
+Setelah lewat gate login, seluruh dashboard client dan internal system di-handle GAS.
+URL browser tetap di `fastudio.id/signin` (shell Vercel + iframe GAS).
 
 ## Customize dari repo
 
-1. Edit sumber di root: `PageHome.html`, `PartialsNav.html`, `PartialsLgFooter.html`, CSS landing di `Styles.html`, logika di `ScriptsCore.html` (blok `LG_*`).
-2. Jalankan: `python3 tools/build-landing.py`
-3. Set URL GAS di `landing/config.js` (`GAS_APP_URL`).
-4. Deploy folder `landing/` ke Vercel (Root Directory = `landing`).
+1. Edit sumber marketing di root: `PageHome.html`, `PageGallery.html`, `PageAbout.html`,
+   `PartialsNav.html`, `PartialsMobileNav.html`, `PartialsLgFooter.html`,
+   `PartialsAboutFaq.html`, CSS di `Styles.html`, logika publik di `ScriptsCore.html`.
+2. Auth/ops tetap di GAS: `IndexAuth.html`, `PageOps.html`, `ScriptsOps.html`, `Kode.js`, …
+3. Jalankan: `python3 tools/build-landing.py`
+4. Set `GAS_APP_URL` di `landing/config.js`.
+5. Deploy folder `landing/` ke Vercel (Root Directory = `landing`).
 
-## Deploy Vercel
+## Routes
 
-1. Import repo ke Vercel.
-2. **Root Directory:** `landing`
-3. Framework: Other — no build command.
-4. Tambahkan custom domain `fastudio.id`.
+| Path | Isi |
+|------|-----|
+| `/` | Home · Work · Services · About (+ mobile nav) |
+| `/signin` | **Login gate** → GAS auth + post-login system |
+| `/signin?page=reset-password` | Reset password (masih di gate) |
+| `/app`, `/ops`, `/booking` | Alias → `/signin` |
 
-CTA **Create Project** / **Sign In** mengarah ke `GAS_APP_URL`.
+## Deploy
+
+1. Vercel Root Directory = `landing`
+2. Custom domain `fastudio.id`
+3. GAS `doGet` harus `XFrameOptionsMode.ALLOWALL`
+4. Setelah ubah auth shell (`IndexAuth`), `clasp push` (+ deploy web app bila perlu)

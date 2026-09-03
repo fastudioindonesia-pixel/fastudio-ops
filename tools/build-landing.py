@@ -139,8 +139,29 @@ def build_index() -> str:
 """
 
 
+def get_gas_exec_url() -> str:
+    cfg = OUT / "config.js"
+    if not cfg.exists():
+        return ""
+    m = re.search(r"GAS_APP_URL\s*=\s*['\"]([^'\"]+)['\"]", cfg.read_text(encoding="utf-8"))
+    if not m:
+        return ""
+    url = m.group(1).strip().rstrip("/")
+    if not url or "PASTE_" in url:
+        return ""
+    return url
+
+
 def build_app_html() -> str:
     """Vercel login gate: branded shell + GAS iframe for auth + post-login system."""
+    gas = get_gas_exec_url()
+    default_src = f"{gas}?page=ops" if gas else ""
+    preload = (
+        f'<link rel="preload" as="document" href="{default_src}"/>\n'
+        if default_src
+        else ""
+    )
+    iframe_src = f' src="{default_src}"' if default_src else ""
     return """<!DOCTYPE html>
 <html lang="id">
 <head>
@@ -152,11 +173,14 @@ def build_app_html() -> str:
 <link rel="apple-touch-icon" href="assets/fa-app-icon.png" sizes="180x180"/>
 <link rel="preconnect" href="https://script.google.com" crossorigin/>
 <link rel="dns-prefetch" href="https://script.google.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+__PRELOAD__
+<script src="config.js"></script>
 <style>
   html, body { margin: 0; height: 100%; background: #f8f8f6; }
   body {
-    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    font-family: system-ui, sans-serif;
     color: #070707;
     overflow: hidden;
   }
@@ -200,6 +224,8 @@ def build_app_html() -> str:
     title="FA Studio Sign In"
     allow="clipboard-write"
     referrerpolicy="no-referrer-when-downgrade"
+    fetchpriority="high"
+    __IFRAME_SRC__
   ></iframe>
   <div id="fa-app-fallback">
     <div>
@@ -207,7 +233,6 @@ def build_app_html() -> str:
       <p><a id="fa-app-fallback-link" href="#">Buka langsung</a> · <a href="/">Kembali ke beranda</a></p>
     </div>
   </div>
-  <script src="config.js"></script>
   <script>
 (function () {
   var boot = document.getElementById('fa-app-boot');
@@ -227,18 +252,13 @@ def build_app_html() -> str:
     return;
   }
 
-  // GAS IndexAuth: login UI + (after auth) client portal / internal ops.
   var gasUrl = base + '?page=' + encodeURIComponent(page);
   if (fallbackLink) fallbackLink.href = gasUrl;
 
-  // Local HTTP preview: Google often serves a blank frame inside iframe.
-  // Jump top-level to GAS so login UI is testable; production HTTPS keeps iframe.
   var host = String(window.location.hostname || '');
   var isLocalHost = host === '127.0.0.1' || host === 'localhost';
   if (isLocalHost) {
-    window.setTimeout(function () {
-      window.location.replace(gasUrl);
-    }, 450);
+    window.location.replace(gasUrl);
     return;
   }
 
@@ -249,15 +269,15 @@ def build_app_html() -> str:
     if (boot) boot.classList.add('is-done');
   }
 
-  frame.addEventListener('load', function () {
-    window.setTimeout(hideBoot, 180);
-  });
-  window.setTimeout(hideBoot, 12000);
+  if (frame) {
+    var current = String(frame.getAttribute('src') || '');
+    if (current !== gasUrl) frame.src = gasUrl;
+    frame.addEventListener('load', hideBoot);
+  }
+  window.setTimeout(hideBoot, 400);
   window.setTimeout(function () {
     if (!done && fallback) fallback.classList.add('is-on');
   }, 20000);
-
-  frame.src = gasUrl;
 
   try {
     document.title = (page === 'reset-password' ? 'Reset Password' : 'Sign In') + ' — FA Studio Indonesia';
@@ -266,7 +286,7 @@ def build_app_html() -> str:
   </script>
 </body>
 </html>
-"""
+""".replace("__PRELOAD__", preload).replace("__IFRAME_SRC__", iframe_src)
 
 
 def build_bridge_js() -> str:
@@ -295,16 +315,12 @@ function localSignInPath_(page) {
 }
 
 function warmGasApp_() {
-  var url = gasAppUrl_('ops');
-  if (!url) return;
+  var base = (window.GAS_APP_URL || '').replace(/\/$/, '');
+  if (!base || base.indexOf('PASTE_') === 0) return;
+  var warm = base + (base.indexOf('?') >= 0 ? '&' : '?') + 'warm=1';
   try {
-    fetch(url, { mode: 'no-cors', credentials: 'omit', cache: 'no-store', keepalive: true });
+    fetch(warm, { mode: 'no-cors', credentials: 'omit', keepalive: true });
   } catch (e1) {}
-  try {
-    var img = new Image();
-    img.referrerPolicy = 'no-referrer';
-    img.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_warm=' + Date.now();
-  } catch (e2) {}
   try {
     fetch('/signin', { credentials: 'omit', cache: 'force-cache', keepalive: true });
   } catch (e3) {}
@@ -315,8 +331,7 @@ function goToGasApp(page) {
     alert('URL aplikasi belum di-set. Isi GAS_APP_URL di landing/config.js, lalu rebuild/deploy ulang.');
     return;
   }
-  warmGasApp_();
-  // Enter the login gate (Vercel URL). GAS takes over auth + post-login system inside.
+  // Don't ping GAS on click — navigation would race the iframe. Homepage idle/hover already warmed it.
   window.location.href = localSignInPath_(page || 'ops');
 }
 
@@ -421,6 +436,11 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   warmGasApp_();
+  if (window.requestIdleCallback) {
+    window.requestIdleCallback(warmGasApp_, { timeout: 800 });
+  } else {
+    window.setTimeout(warmGasApp_, 200);
+  }
   var cta = document.getElementById('lg-nav-cta');
   if (cta) {
     cta.addEventListener('pointerenter', warmGasApp_, { passive: true });
@@ -591,13 +611,13 @@ def main() -> None:
     landing_js = extract_scripts_core_landing(core) + "\n" + build_bridge_js()
     (OUT / "landing.js").write_text(landing_js, encoding="utf-8")
     (OUT / "logos.js").write_text(build_logos_js(), encoding="utf-8")
+    write_config_if_needed()
     (OUT / "index.html").write_text(build_index(), encoding="utf-8")
     gate = build_app_html()
     (OUT / "app.html").write_text(gate, encoding="utf-8")
     (OUT / "signin.html").write_text(gate, encoding="utf-8")
 
     copy_assets()
-    write_config_if_needed()
     write_vercel_json()
     write_readme()
 

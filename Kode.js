@@ -580,6 +580,14 @@ function include(filename) {
 }
 
 function doGet(e) {
+  // Cheap ping from the marketing site so the Apps Script instance is already warm
+  // before /signin loads the full auth HTML.
+  try {
+    if (e && e.parameter && String(e.parameter.warm || "") === "1") {
+      return ContentService.createTextOutput("1").setMimeType(ContentService.MimeType.TEXT);
+    }
+  } catch (warmErr) {}
+
   // Jangan buka Spreadsheet di sini — itu yang bikin first paint 5–15 detik.
   // Setup sheet tetap jalan saat login / operasi data.
   // Query ?page=ops dari Vercel TIDAK masuk window.location di iframe HtmlService —

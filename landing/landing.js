@@ -1347,16 +1347,12 @@ function localSignInPath_(page) {
 }
 
 function warmGasApp_() {
-  var url = gasAppUrl_('ops');
-  if (!url) return;
+  var base = (window.GAS_APP_URL || '').replace(/\/$/, '');
+  if (!base || base.indexOf('PASTE_') === 0) return;
+  var warm = base + (base.indexOf('?') >= 0 ? '&' : '?') + 'warm=1';
   try {
-    fetch(url, { mode: 'no-cors', credentials: 'omit', cache: 'no-store', keepalive: true });
+    fetch(warm, { mode: 'no-cors', credentials: 'omit', keepalive: true });
   } catch (e1) {}
-  try {
-    var img = new Image();
-    img.referrerPolicy = 'no-referrer';
-    img.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_warm=' + Date.now();
-  } catch (e2) {}
   try {
     fetch('/signin', { credentials: 'omit', cache: 'force-cache', keepalive: true });
   } catch (e3) {}
@@ -1367,8 +1363,7 @@ function goToGasApp(page) {
     alert('URL aplikasi belum di-set. Isi GAS_APP_URL di landing/config.js, lalu rebuild/deploy ulang.');
     return;
   }
-  warmGasApp_();
-  // Enter the login gate (Vercel URL). GAS takes over auth + post-login system inside.
+  // Don't ping GAS on click — navigation would race the iframe. Homepage idle/hover already warmed it.
   window.location.href = localSignInPath_(page || 'ops');
 }
 
@@ -1473,6 +1468,11 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   warmGasApp_();
+  if (window.requestIdleCallback) {
+    window.requestIdleCallback(warmGasApp_, { timeout: 800 });
+  } else {
+    window.setTimeout(warmGasApp_, 200);
+  }
   var cta = document.getElementById('lg-nav-cta');
   if (cta) {
     cta.addEventListener('pointerenter', warmGasApp_, { passive: true });

@@ -9,11 +9,15 @@
 <link rel="apple-touch-icon" href="assets/fa-app-icon.png" sizes="180x180"/>
 <link rel="preconnect" href="https://script.google.com" crossorigin/>
 <link rel="dns-prefetch" href="https://script.google.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link rel="preload" as="document" href="https://script.google.com/macros/s/AKfycbwXcaLFLMbknnb7WcH3asgJHEplU6-KjHV3gvGDfI8QcdRhmuP-mHvmtrlS9EfUalGi/exec?page=ops"/>
+
+<script src="config.js"></script>
 <style>
   html, body { margin: 0; height: 100%; background: #f8f8f6; }
   body {
-    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    font-family: system-ui, sans-serif;
     color: #070707;
     overflow: hidden;
   }
@@ -57,6 +61,8 @@
     title="FA Studio Sign In"
     allow="clipboard-write"
     referrerpolicy="no-referrer-when-downgrade"
+    fetchpriority="high"
+     src="https://script.google.com/macros/s/AKfycbwXcaLFLMbknnb7WcH3asgJHEplU6-KjHV3gvGDfI8QcdRhmuP-mHvmtrlS9EfUalGi/exec?page=ops"
   ></iframe>
   <div id="fa-app-fallback">
     <div>
@@ -64,7 +70,6 @@
       <p><a id="fa-app-fallback-link" href="#">Buka langsung</a> · <a href="/">Kembali ke beranda</a></p>
     </div>
   </div>
-  <script src="config.js"></script>
   <script>
 (function () {
   var boot = document.getElementById('fa-app-boot');
@@ -84,18 +89,13 @@
     return;
   }
 
-  // GAS IndexAuth: login UI + (after auth) client portal / internal ops.
   var gasUrl = base + '?page=' + encodeURIComponent(page);
   if (fallbackLink) fallbackLink.href = gasUrl;
 
-  // Local HTTP preview: Google often serves a blank frame inside iframe.
-  // Jump top-level to GAS so login UI is testable; production HTTPS keeps iframe.
   var host = String(window.location.hostname || '');
   var isLocalHost = host === '127.0.0.1' || host === 'localhost';
   if (isLocalHost) {
-    window.setTimeout(function () {
-      window.location.replace(gasUrl);
-    }, 450);
+    window.location.replace(gasUrl);
     return;
   }
 
@@ -106,15 +106,15 @@
     if (boot) boot.classList.add('is-done');
   }
 
-  frame.addEventListener('load', function () {
-    window.setTimeout(hideBoot, 180);
-  });
-  window.setTimeout(hideBoot, 12000);
+  if (frame) {
+    var current = String(frame.getAttribute('src') || '');
+    if (current !== gasUrl) frame.src = gasUrl;
+    frame.addEventListener('load', hideBoot);
+  }
+  window.setTimeout(hideBoot, 400);
   window.setTimeout(function () {
     if (!done && fallback) fallback.classList.add('is-on');
   }, 20000);
-
-  frame.src = gasUrl;
 
   try {
     document.title = (page === 'reset-password' ? 'Reset Password' : 'Sign In') + ' — FA Studio Indonesia';

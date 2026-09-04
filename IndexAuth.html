@@ -114,8 +114,9 @@
   window.PUBLIC_SITE_URL = <?!= JSON.stringify(typeof publicSiteUrl !== 'undefined' && publicSiteUrl ? publicSiteUrl : 'https://www.fastudio.id') ?>;
   (function () {
     var origin = String(window.PUBLIC_SITE_URL || 'https://www.fastudio.id').replace(/\/$/, '');
-    window.LG_LOGO_BLACK = origin + '/assets/fa-logo-dark.png';
-    window.LG_LOGO_WHITE = origin + '/assets/fa-logo-light.png';
+    // File names are relative to background, not ink: *-light = black text, *-dark = white text.
+    window.LG_LOGO_BLACK = origin + '/assets/fa-logo-light.png';
+    window.LG_LOGO_WHITE = origin + '/assets/fa-logo-dark.png';
     window.LG_LOGO_ICON = origin + '/assets/fa-app-icon.png';
   })();
 </script>

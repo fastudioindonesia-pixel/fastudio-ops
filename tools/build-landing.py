@@ -471,8 +471,9 @@ document.addEventListener('DOMContentLoaded', function() {
 def build_logos_js() -> str:
     return """
 (function applyLgOfficialLogos() {
-  var black = 'assets/fa-logo-dark.png';
-  var white = 'assets/fa-logo-light.png';
+  // File names are relative to background, not ink: *-light = black text, *-dark = white text.
+  var black = 'assets/fa-logo-light.png';
+  var white = 'assets/fa-logo-dark.png';
   var icon = 'assets/fa-app-icon.png';
   var hero = 'assets/FAS01822-hero.jpg';
   var toastIcon = 'assets/lg-toast-icon.png';

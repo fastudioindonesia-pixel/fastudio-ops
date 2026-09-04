@@ -283,20 +283,20 @@ __PRELOAD__
     document.title = (page === 'reset-password' ? 'Reset Password' : 'Sign In') + ' - FA Studio Indonesia';
   } catch (e) {}
 
-  // GAS iframe mem-post title per peran setelah login / logout.
+  // GAS nested iframe → postMessage ke window.top; terima judul dari allowlist.
+  var FA_TITLES = {
+    'Portal Client - FA Studio Indonesia': 1,
+    'Operation System - FA Studio Indonesia': 1,
+    'Production - FA Studio Indonesia': 1,
+    'Sign In - FA Studio Indonesia': 1,
+    'Reset Password - FA Studio Indonesia': 1
+  };
   window.addEventListener('message', function (ev) {
     try {
-      var origin = String(ev.origin || '');
-      if (
-        origin.indexOf('script.google.com') < 0 &&
-        origin.indexOf('googleusercontent.com') < 0
-      ) {
-        return;
-      }
       var data = ev.data;
       if (!data || data.type !== 'fa-studio-title' || typeof data.title !== 'string') return;
       var next = String(data.title || '').trim();
-      if (!next) return;
+      if (!FA_TITLES[next]) return;
       document.title = next;
     } catch (err) {}
   });

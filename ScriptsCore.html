@@ -1921,7 +1921,28 @@ function isAuthenticatedSession() {
   return false;
 }
 
-/** Judul tab browser per peran (juga sync ke parent Vercel iframe gate). */
+/** Judul tab browser per peran (sync ke Vercel gate via postMessage → window.top). */
+var _faTitleBroadcast_ = '';
+var _faTitleRetryTimers_ = [];
+
+function broadcastFaStudioTitle_(title) {
+  try { document.title = title; } catch (e) {}
+  var msg = { type: 'fa-studio-title', title: title, source: 'fa-studio-ops' };
+  // HtmlService nested iframe: parent ≠ Vercel top — harus kirim ke top juga.
+  var targets = [];
+  try {
+    if (window.parent && window.parent !== window) targets.push(window.parent);
+  } catch (e1) {}
+  try {
+    if (window.top && window.top !== window && targets.indexOf(window.top) < 0) {
+      targets.push(window.top);
+    }
+  } catch (e2) {}
+  for (var i = 0; i < targets.length; i++) {
+    try { targets[i].postMessage(msg, '*'); } catch (e3) {}
+  }
+}
+
 function syncDocumentTitleForSession_() {
   var title = 'Sign In - FA Studio Indonesia';
   try {
@@ -1929,31 +1950,35 @@ function syncDocumentTitleForSession_() {
     if (pageId === 'reset-password') {
       title = 'Reset Password - FA Studio Indonesia';
     } else {
-      var role = String(typeof _opsInternalRole !== 'undefined' ? _opsInternalRole : '').trim().toUpperCase();
       var loggedIn = !!(typeof _opsInternalCredential !== 'undefined' && _opsInternalCredential);
-      if (loggedIn && role) {
-        if (role === 'CLIENT') {
+      if (loggedIn) {
+        if (typeof isClientUser === 'function' && isClientUser()) {
           title = 'Portal Client - FA Studio Indonesia';
-        } else if (
-          role === 'MARKETING' ||
-          role === 'SOUND_MAN' ||
-          role === 'EDITOR' ||
-          role === 'FINAL_VIDEO'
-        ) {
+        } else if (typeof isDeptPicUser === 'function' && isDeptPicUser()) {
           title = 'Production - FA Studio Indonesia';
         } else {
-          // DIRECTOR, OFFICER, INTERNAL, dll.
+          // DIRECTOR / DIREKTUR / OFFICER / INTERNAL
           title = 'Operation System - FA Studio Indonesia';
         }
       }
     }
   } catch (e) {}
-  try { document.title = title; } catch (e2) {}
-  try {
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'fa-studio-title', title: title }, '*');
+
+  broadcastFaStudioTitle_(title);
+
+  // Retry: parent listener / nested frame kadang belum siap di pesan pertama.
+  if (title !== _faTitleBroadcast_) {
+    _faTitleBroadcast_ = title;
+    for (var t = 0; t < _faTitleRetryTimers_.length; t++) {
+      try { clearTimeout(_faTitleRetryTimers_[t]); } catch (e4) {}
     }
-  } catch (e3) {}
+    _faTitleRetryTimers_ = [];
+    [400, 1200, 3000].forEach(function (ms) {
+      _faTitleRetryTimers_.push(setTimeout(function () {
+        broadcastFaStudioTitle_(title);
+      }, ms));
+    });
+  }
 }
 
 /** Sembunyikan navigasi publik saat user sudah login — keluar hanya lewat logout. */

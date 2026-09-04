@@ -234,6 +234,322 @@ function patchLeadStatusInCaches_(projectId, newStatus, folderUrl) {
   if (!opsPatched && !prodPatched) invalidateAllDataCaches_();
 }
 
+var CACHE_KEY_PAYMENT_JOBS = "paymentJobs_v1";
+var PROP_KEY_PAYMENT_JOBS = "PAYMENT_JOBS_V1";
+
+function paymentMapCacheKeys_(projectId) {
+  var pid = normalizeProjectId_(projectId);
+  var bare = String(pid || "").replace(/^#/, "");
+  var keys = [];
+  [pid, projectId, bare, bare ? "#" + bare : ""].forEach(function(key) {
+    key = String(key || "").trim();
+    if (key && keys.indexOf(key) < 0) keys.push(key);
+  });
+  return keys;
+}
+
+/** Patch satu baris paymentMap di cache ops — jangan buang seluruh dashboard cache. */
+function patchCachedPaymentMapEntry_(projectId, patch) {
+  if (!projectId || !patch) return false;
+  var cached = getCacheLarge_(CACHE_KEY_OPERATION);
+  if (!cached || !cached.success) return false;
+  cached.paymentMap = cached.paymentMap || {};
+  var keys = paymentMapCacheKeys_(projectId);
+  var base = {};
+  keys.forEach(function(key) {
+    if (cached.paymentMap[key]) base = cached.paymentMap[key];
+  });
+  var next = Object.assign({}, base, patch);
+  keys.forEach(function(key) { cached.paymentMap[key] = next; });
+  cached.syncTimestamp = new Date().toISOString();
+  try {
+    putCache_(CACHE_KEY_OPERATION, cached);
+    return true;
+  } catch (err) {
+    Logger.log("patchCachedPaymentMapEntry_ gagal: " + err.message);
+    return false;
+  }
+}
+
+function stripApprovalIdFromList_(list, approvalId) {
+  approvalId = String(approvalId || "").trim();
+  return (list || []).filter(function(item) {
+    return String((item && item.approvalId) || "").trim() !== approvalId;
+  });
+}
+
+/**
+ * Geser satu pengajuan payment di cache ops + cache inbox.
+ * Kalau put gagal, buang HANYA cache approval (bukan seluruh opsData).
+ */
+function patchCachedPaymentApproval_(approval, status) {
+  if (!approval || !approval.approvalId) return false;
+  status = String(status || approval.status || "").trim().toUpperCase();
+  var slim = slimPaymentApprovalForList_(Object.assign({}, approval, { status: status }));
+  var opsOk = false;
+  var apprOk = false;
+
+  try {
+    var ops = getCacheLarge_(CACHE_KEY_OPERATION);
+    if (ops && ops.success) {
+      ops._allPendingPay = stripApprovalIdFromList_(ops._allPendingPay, approval.approvalId);
+      ops._rejectedPay = stripApprovalIdFromList_(ops._rejectedPay, approval.approvalId);
+      ops._approvedPay = stripApprovalIdFromList_(ops._approvedPay, approval.approvalId);
+      if (status === "PENDING") ops._allPendingPay = [slim].concat(ops._allPendingPay || []);
+      else if (status === "REJECTED") {
+        ops._rejectedPay = [slim].concat(ops._rejectedPay || []);
+        ops._rejectedPay = takeLastApprovals_(ops._rejectedPay, 30);
+      } else if (status === "APPROVED") {
+        ops._approvedPay = [slim].concat(ops._approvedPay || []);
+        ops._approvedPay = takeLastApprovals_(ops._approvedPay, 30);
+      }
+      ops.syncTimestamp = new Date().toISOString();
+      putCache_(CACHE_KEY_OPERATION, ops);
+      opsOk = true;
+    }
+  } catch (opsErr) {
+    Logger.log("patchCachedPaymentApproval_ ops gagal: " + opsErr.message);
+  }
+
+  try {
+    var appr = getCache_(CACHE_KEY_APPROVALS);
+    if (appr && appr._allPay) {
+      appr._allPay = stripApprovalIdFromList_(appr._allPay, approval.approvalId);
+      appr._allPay.unshift(Object.assign({}, approval, { status: status }));
+      appr._allPay = takeLastApprovals_(appr._allPay, 120);
+      putCache_(CACHE_KEY_APPROVALS, appr);
+      apprOk = true;
+    }
+  } catch (apprErr) {
+    Logger.log("patchCachedPaymentApproval_ inbox gagal: " + apprErr.message);
+  }
+
+  if (!apprOk) invalidateCache_(CACHE_KEY_APPROVALS);
+  return opsOk || apprOk;
+}
+
+function patchPaymentWriteCaches_(approval, status, paymentPatch) {
+  if (paymentPatch && approval && approval.projectId) {
+    patchCachedPaymentMapEntry_(approval.projectId, paymentPatch);
+  }
+  patchCachedPaymentApproval_(approval, status);
+  invalidateClientPortalCaches_();
+}
+
+/**
+ * Geser satu pengajuan departemen di cache ops + inbox.
+ * List dept terpisah dari payment (_allPendingDept / _allDept).
+ */
+function patchCachedDeptApproval_(approval, status) {
+  if (!approval || !approval.approvalId) return false;
+  status = String(status || approval.status || "").trim().toUpperCase();
+  var slim = Object.assign({}, approval, { status: status, type: "DEPT" });
+  delete slim._rowIndex;
+  var opsOk = false;
+  var apprOk = false;
+
+  try {
+    var ops = getCacheLarge_(CACHE_KEY_OPERATION);
+    if (ops && ops.success) {
+      ops._allPendingDept = stripApprovalIdFromList_(ops._allPendingDept, approval.approvalId);
+      ops._rejectedDept = stripApprovalIdFromList_(ops._rejectedDept, approval.approvalId);
+      ops._approvedDept = stripApprovalIdFromList_(ops._approvedDept, approval.approvalId);
+      if (status === "PENDING") {
+        ops._allPendingDept = [slim].concat(ops._allPendingDept || []);
+      } else if (status === "REJECTED") {
+        ops._rejectedDept = takeLastApprovals_([slim].concat(ops._rejectedDept || []), 30);
+      } else if (status === "APPROVED") {
+        ops._approvedDept = takeLastApprovals_([slim].concat(ops._approvedDept || []), 30);
+      }
+      // CANCELLED / lainnya: cukup dihapus dari antrean.
+      ops.syncTimestamp = new Date().toISOString();
+      putCache_(CACHE_KEY_OPERATION, ops);
+      opsOk = true;
+    }
+  } catch (opsErr) {
+    Logger.log("patchCachedDeptApproval_ ops gagal: " + opsErr.message);
+  }
+
+  try {
+    var appr = getCache_(CACHE_KEY_APPROVALS);
+    if (appr && (appr._allDept || appr._allPay)) {
+      appr._allDept = stripApprovalIdFromList_(appr._allDept, approval.approvalId);
+      if (status === "PENDING" || status === "REJECTED" || status === "APPROVED") {
+        appr._allDept = [slim].concat(appr._allDept || []);
+        appr._allDept = takeLastApprovals_(appr._allDept, 120);
+      }
+      putCache_(CACHE_KEY_APPROVALS, appr);
+      apprOk = true;
+    }
+  } catch (apprErr) {
+    Logger.log("patchCachedDeptApproval_ inbox gagal: " + apprErr.message);
+  }
+
+  if (!apprOk) invalidateCache_(CACHE_KEY_APPROVALS);
+  return opsOk || apprOk;
+}
+
+/** Patch production ops di cache leads (prodops). OpsData cache tidak menyimpan leads. */
+function patchLeadProductionCaches_(projectId, applied) {
+  applied = applied || {};
+  var opsData = applied.opsData;
+  var opsStr = "";
+  if (typeof opsData === "string") opsStr = opsData;
+  else if (opsData) opsStr = stringifyProductionOpsData_(opsData, []);
+  var fields = {};
+  if (opsStr) {
+    fields.productionopsdata = opsStr;
+    fields.productionOpsData = opsStr;
+  }
+  if (applied.opsUpdatedAt) {
+    fields.productionopsupdatedat = applied.opsUpdatedAt;
+    fields.productionOpsUpdatedAt = applied.opsUpdatedAt;
+  }
+  if (applied.opsUpdatedBy) {
+    fields.productionopsupdatedby = applied.opsUpdatedBy;
+    fields.productionOpsUpdatedBy = applied.opsUpdatedBy;
+  }
+  if (applied.production) {
+    if (applied.production.stage) {
+      fields.productionstage = applied.production.stage;
+      fields.productionStage = applied.production.stage;
+    }
+    if (applied.production.updatedAt) {
+      fields.productionupdatedat = applied.production.updatedAt;
+      fields.productionUpdatedAt = applied.production.updatedAt;
+    }
+    if (applied.production.updatedBy) {
+      fields.productionupdatedby = applied.production.updatedBy;
+      fields.productionUpdatedBy = applied.production.updatedBy;
+    }
+  }
+  var prodPatched = patchCachedLeadFields_(CACHE_KEY_PRODOPS, projectId, fields);
+  patchCachedLeadFields_(CACHE_KEY_OPERATION, projectId, fields);
+  invalidateClientPortalCaches_();
+  return prodPatched;
+}
+
+function patchDeptWriteCaches_(approval, status, applied) {
+  if (applied && approval && approval.projectId) {
+    patchLeadProductionCaches_(approval.projectId, applied);
+  }
+  patchCachedDeptApproval_(approval, status);
+}
+
+function loadPaymentJobs_() {
+  var fromCache = getCache_(CACHE_KEY_PAYMENT_JOBS);
+  if (fromCache && Object.prototype.toString.call(fromCache) === "[object Array]") return fromCache;
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(PROP_KEY_PAYMENT_JOBS);
+    if (!raw) return [];
+    var parsed = JSON.parse(raw);
+    return Object.prototype.toString.call(parsed) === "[object Array]" ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function savePaymentJobs_(jobs) {
+  jobs = jobs || [];
+  try { putCache_(CACHE_KEY_PAYMENT_JOBS, jobs); } catch (e1) {}
+  try {
+    PropertiesService.getScriptProperties().setProperty(PROP_KEY_PAYMENT_JOBS, JSON.stringify(jobs));
+  } catch (e2) {
+    Logger.log("savePaymentJobs_ properties gagal: " + e2.message);
+  }
+}
+
+function enqueuePaymentJob_(job) {
+  job = job || {};
+  if (!job.type) return;
+  job.id = job.id || (String(job.type) + "_" + String(job.approvalId || Utilities.getUuid()));
+  job.queuedAt = job.queuedAt || new Date().toISOString();
+  job.attempts = Number(job.attempts || 0);
+  var jobs = loadPaymentJobs_();
+  var exists = jobs.some(function(item) { return item && item.id === job.id; });
+  if (!exists) jobs.push(job);
+  if (jobs.length > 40) jobs = jobs.slice(jobs.length - 40);
+  savePaymentJobs_(jobs);
+}
+
+function runPaymentJob_(job) {
+  job = job || {};
+  if (job.type === "PAYMENT_APPROVE_DISPATCH") return runPaymentApproveDispatch_(job);
+  if (job.type === "PAYMENT_SUBMIT_NOTIFY") {
+    var pending = getPaymentApprovalById_(job.approvalId);
+    if (pending) sendPendingPaymentReviewNotification_(pending);
+    return { done: true };
+  }
+  if (job.type === "PAYMENT_REJECT_NOTIFY") {
+    var rejected = getPaymentApprovalById_(job.approvalId) || job.approval || {};
+    sendOfficerPaymentDecisionEmail_({
+      decision: "REJECTED",
+      approval: rejected,
+      reviewedBy: job.reviewedBy || rejected.reviewedBy || "",
+      reviewNotes: job.reviewNotes || rejected.reviewNotes || ""
+    });
+    return { done: true };
+  }
+  return { done: true };
+}
+
+function processPaymentJobs_(limit) {
+  limit = Number(limit || 3);
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(2500)) return { success: true, processed: 0, busy: true, results: [] };
+  try {
+    var jobs = loadPaymentJobs_();
+    var keep = [];
+    var results = [];
+    for (var i = 0; i < jobs.length; i++) {
+      var job = jobs[i];
+      if (!job || !job.type) continue;
+      if (results.length >= limit) {
+        keep.push(job);
+        continue;
+      }
+      job.attempts = Number(job.attempts || 0) + 1;
+      try {
+        var outcome = runPaymentJob_(job) || {};
+        if (outcome.done) {
+          results.push({
+            id: job.id,
+            type: job.type,
+            approvalId: job.approvalId || "",
+            projectId: job.projectId || "",
+            success: true,
+            invoiceUrl: outcome.invoiceUrl || "",
+            invoiceNumber: outcome.invoiceNumber || job.invoiceNumber || ""
+          });
+        } else if (job.attempts >= 8) {
+          Logger.log("payment job dropped: " + job.id);
+          results.push({ id: job.id, type: job.type, success: false, dropped: true });
+        } else {
+          keep.push(job);
+        }
+      } catch (err) {
+        job.lastError = err.message;
+        Logger.log("payment job error " + job.id + ": " + err.message);
+        if (job.attempts < 8) keep.push(job);
+      }
+    }
+    savePaymentJobs_(keep);
+    return { success: true, processed: results.length, remaining: keep.length, results: results };
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
+}
+
+/** Drain antrian PDF/email/ACL. Dipanggil dari UI (tanpa overlay) dan dari pemanas cache. */
+function dispatchPaymentSideEffects(accessKey) {
+  try {
+    requireInternalRole_(accessKey);
+    return processPaymentJobs_(4);
+  } catch (err) {
+    return { success: false, error: err.message, processed: 0, results: [] };
+  }
+}
+
 function getClientPortalCacheKey_(email) {
   return "clientPortal_v2_" + Utilities.base64EncodeWebSafe(String(email || "").trim().toLowerCase());
 }
@@ -581,7 +897,7 @@ function include(filename) {
 
 function doGet(e) {
   // Cheap ping from the marketing site so the Apps Script instance is already warm
-  // before /signin loads the full auth HTML.
+  // before /user loads the full auth HTML.
   try {
     if (e && e.parameter && String(e.parameter.warm || "") === "1") {
       return ContentService.createTextOutput("1").setMimeType(ContentService.MimeType.TEXT);
@@ -612,7 +928,7 @@ function doGet(e) {
   template.publicSiteUrl = "https://www.fastudio.id";
   var out = template
     .evaluate()
-    .setTitle(useAuthShell ? "Sign In — FA Studio Indonesia" : "FA Studio Indonesia")
+    .setTitle(useAuthShell ? "Sign In - FA Studio Indonesia" : "FA Studio Indonesia")
     .addMetaTag("viewport", "width=device-width, initial-scale=1")
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   var faviconUrl = getAppFaviconUrl_();
@@ -3049,6 +3365,7 @@ function updateProductionOpsProgress(accessKey, projectId, departments, notes, t
             reviewedAt: timestamp,
             reviewNotes: "Diganti langsung oleh Direktur."
           });
+          patchCachedDeptApproval_(existingPending, "CANCELLED");
         }
         if (isTriggered) {
           var dProgress = Number(item.progress || 0);
@@ -3109,6 +3426,7 @@ function updateProductionOpsProgress(accessKey, projectId, departments, notes, t
             reviewedAt: timestamp,
             reviewNotes: "Diganti dengan pengajuan progress baru."
           });
+          patchCachedDeptApproval_(existingPending, "CANCELLED");
         }
         approvalRecord = appendDeptApproval_(buildDeptApprovalRequest_(
           projectId, item, ctx, folderCatalog, leadForFolders
@@ -3209,7 +3527,19 @@ function updateProductionOpsProgress(accessKey, projectId, departments, notes, t
       if (folder && folder.id) deptFolders[folder.id] = folder.url || "";
     });
 
-    invalidateAllDataCaches_();
+    patchLeadProductionCaches_(projectId, {
+      opsData: normalizedItems,
+      opsUpdatedAt: timestamp,
+      opsUpdatedBy: ctx.email || "",
+      production: production
+    });
+    (createdApprovals || []).forEach(function(approval) {
+      patchCachedDeptApproval_(approval, "PENDING");
+    });
+    if (pendingValidation && pendingValidation.approvalId) {
+      patchCachedDeptApproval_(pendingValidation, "PENDING");
+    }
+
     return {
       success: true,
       projectId: projectId,
@@ -7040,6 +7370,26 @@ function migratePaymentInvoiceSheetColumns_(sheet) {
   });
 }
 
+function updateInvoiceUrlByNumber_(invoiceNumber, invoiceUrl) {
+  invoiceNumber = String(invoiceNumber || "").trim();
+  invoiceUrl = String(invoiceUrl || "").trim();
+  if (!invoiceNumber || !invoiceUrl) return false;
+  var ss = SpreadsheetApp.openById(getConfig_("SHEET_ID"));
+  var sheet = ss.getSheetByName(CONFIG.SHEET_PAY_INVOICES);
+  if (!sheet || sheet.getLastRow() < 2) return false;
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var numCol = headers.indexOf("invoiceNumber");
+  var urlCol = headers.indexOf("invoiceUrl");
+  if (numCol < 0 || urlCol < 0) return false;
+  for (var i = data.length - 1; i >= 1; i--) {
+    if (String(data[i][numCol] || "").trim() !== invoiceNumber) continue;
+    sheet.getRange(i + 1, urlCol + 1).setValue(invoiceUrl);
+    return true;
+  }
+  return false;
+}
+
 function logPaymentInvoice_(data) {
   initializePaymentSheets_();
   var ss = SpreadsheetApp.openById(getConfig_("SHEET_ID"));
@@ -8081,6 +8431,9 @@ function warmOperationDataCache_() {
     cache.put(CACHE_WARM_LOCK_KEY_, "1", 120);
     var startedAt = Date.now();
     try {
+      try { processPaymentJobs_(3); } catch (jobErr) {
+        Logger.log("warmOperationDataCache_ jobs: " + jobErr.message);
+      }
       buildOperationDataForCtx_({ role: "DIRECTOR", email: "", name: "cache-warmer", projectId: "" }, false);
     } finally {
       cache.remove(CACHE_WARM_LOCK_KEY_);
@@ -8670,9 +9023,19 @@ function applyDeptApprovalToLeadOps_(projectId, departmentId, patch) {
   departmentId = String(departmentId || "").trim();
   var ss = SpreadsheetApp.openById(getConfig_("SHEET_ID"));
   var leadsSheet = ss.getSheetByName(CONFIG.SHEET_LEADS);
-  migrateLeadsSheetColumns_(leadsSheet);
+  if (!leadsSheet) return { success: false, error: "Sheet Leads tidak ditemukan." };
   var data = leadsSheet.getDataRange().getValues();
   var headers = data[0].map(function(h) { return String(h || "").trim(); });
+  var lowerHeaders = headers.map(function(h) { return h.toLowerCase(); });
+  var requiredOpsCols = [
+    "productionstage", "productionupdatedat", "productionupdatedby", "productionnotes",
+    "productionopsdata", "productionopsupdatedat", "productionopsupdatedby"
+  ];
+  if (requiredOpsCols.some(function(c) { return lowerHeaders.indexOf(c) < 0; })) {
+    migrateLeadsSheetColumns_(leadsSheet);
+    data = leadsSheet.getDataRange().getValues();
+    headers = data[0].map(function(h) { return String(h || "").trim(); });
+  }
   var headerMap = getHeaderIndexMap_(headers);
   var projectCol = headerMap.id !== undefined ? headerMap.id : 0;
   var opsDataCol = headers.indexOf("productionOpsData");
@@ -8695,9 +9058,11 @@ function applyDeptApprovalToLeadOps_(projectId, departmentId, patch) {
 
   var lead = getLeadByProjectId_(projectId);
   var folderId = extractDriveIdFromUrl_(lead ? lead.driveUrl : "");
-  var folderCatalog = folderId
-    ? syncProjectDriveFolderCatalog_(projectId, folderId)
-    : getOpsFolderCatalogForProject_(projectId, ss);
+  // Pakai katalog sheet dulu — sync Drive hanya jika katalog masih kosong.
+  var folderCatalog = getOpsFolderCatalogForProject_(projectId, ss);
+  if (!folderCatalog.length && folderId) {
+    folderCatalog = syncProjectDriveFolderCatalog_(projectId, folderId);
+  }
   var items = normalizeProductionOpsData_(data[rowIndex][opsDataCol], folderCatalog);
   var found = false;
   items = items.map(function(item) {
@@ -8765,7 +9130,6 @@ function applyDeptApprovalToLeadOps_(projectId, departmentId, patch) {
 function approveDeptCompletion(accessKey, approvalId, reviewNotes) {
   try {
     var ctx = requireDirectorRole_(accessKey);
-    initializeGoogleSheets_();
     var approval = getDeptApprovalById_(approvalId);
     if (!approval) return { success: false, error: "Pengajuan departemen tidak ditemukan." };
     if (approval.status !== "PENDING") return { success: false, error: "Pengajuan ini sudah diproses." };
@@ -8773,6 +9137,7 @@ function approveDeptCompletion(accessKey, approvalId, reviewNotes) {
 
     var timestamp = new Date().toLocaleString("id-ID");
     var cleanNotes = String(reviewNotes || "").trim();
+    var approvedProgress = Number(approval.progress || 0);
     updateDeptApprovalFields_(approvalId, {
       status: "APPROVED",
       reviewedBy: ctx.email || "",
@@ -8782,7 +9147,7 @@ function approveDeptCompletion(accessKey, approvalId, reviewNotes) {
 
     var applied = applyDeptApprovalToLeadOps_(approval.projectId, approval.departmentId, {
       status: deriveDeptStatusFromProgress_(approval.progress),
-      progress: Number(approval.progress || 0),
+      progress: approvedProgress,
       pic: approval.pic || "",
       note: approval.notes || "",
       approvalStatus: "APPROVED",
@@ -8797,15 +9162,26 @@ function approveDeptCompletion(accessKey, approvalId, reviewNotes) {
     });
     if (!applied.success) return applied;
 
-    var driveGate = { unlocked: false, reason: "" };
-    try {
-      driveGate = syncClientDriveGate_(approval.projectId);
-    } catch (driveGateErr) {
-      Logger.log("syncClientDriveGate_ setelah approve dept gagal: " + driveGateErr.message);
-      driveGate = { unlocked: false, reason: driveGateErr.message };
+    var driveGate = { unlocked: false, reason: "skipped_until_100" };
+    var overall = applied.production ? Number(applied.production.overallPercent || 0) : 0;
+    if (approvedProgress >= 100 || overall >= 100 || (applied.production && applied.production.stage === "Project Selesai")) {
+      try {
+        driveGate = syncClientDriveGate_(approval.projectId);
+      } catch (driveGateErr) {
+        Logger.log("syncClientDriveGate_ setelah approve dept gagal: " + driveGateErr.message);
+        driveGate = { unlocked: false, reason: driveGateErr.message };
+      }
     }
 
-    invalidateAllDataCaches_();
+    var approvedApproval = Object.assign({}, approval, {
+      status: "APPROVED",
+      reviewedBy: ctx.email || "",
+      reviewedAt: timestamp,
+      reviewNotes: cleanNotes,
+      progress: approvedProgress
+    });
+    patchDeptWriteCaches_(approvedApproval, "APPROVED", applied);
+
     appendAuditLog_(
       ctx.email,
       "DEPT_APPROVE",
@@ -8816,10 +9192,12 @@ function approveDeptCompletion(accessKey, approvalId, reviewNotes) {
     return {
       success: true,
       type: "DEPT",
+      status: "APPROVED",
       approvalId: approvalId,
       projectId: approval.projectId,
       departmentId: approval.departmentId,
       departmentLabel: approval.departmentLabel,
+      progress: approvedProgress,
       folderUrl: approval.folderUrl || "",
       reviewNotes: cleanNotes,
       opsData: applied.opsData,
@@ -8835,7 +9213,6 @@ function approveDeptCompletion(accessKey, approvalId, reviewNotes) {
 function rejectDeptCompletion(accessKey, approvalId, reviewNotes) {
   try {
     var ctx = requireDirectorRole_(accessKey);
-    initializeGoogleSheets_();
     reviewNotes = String(reviewNotes || "").trim();
     if (!reviewNotes) return { success: false, error: "Catatan reject wajib diisi." };
 
@@ -8865,7 +9242,14 @@ function rejectDeptCompletion(accessKey, approvalId, reviewNotes) {
     });
     if (!applied.success) return applied;
 
-    invalidateAllDataCaches_();
+    var rejectedApproval = Object.assign({}, approval, {
+      status: "REJECTED",
+      reviewedBy: ctx.email || "",
+      reviewedAt: timestamp,
+      reviewNotes: reviewNotes
+    });
+    patchDeptWriteCaches_(rejectedApproval, "REJECTED", applied);
+
     appendAuditLog_(
       ctx.email,
       "DEPT_REJECT",
@@ -8876,6 +9260,7 @@ function rejectDeptCompletion(accessKey, approvalId, reviewNotes) {
     return {
       success: true,
       type: "DEPT",
+      status: "REJECTED",
       approvalId: approvalId,
       projectId: approval.projectId,
       departmentId: approval.departmentId,
@@ -9195,7 +9580,7 @@ function buildPaymentFinalizePayload_(approval, lead, existing, ctx) {
   };
 }
 
-function finalizeApprovedPayment_(approval, ctx) {
+function persistApprovedPaymentCore_(approval, ctx) {
   var projectId = normalizeProjectId_(approval.projectId);
   var lead = getLeadByProjectId_(projectId);
   if (!lead) return { success: false, error: "Project ID tidak ditemukan di database client." };
@@ -9214,31 +9599,7 @@ function finalizeApprovedPayment_(approval, ctx) {
     };
   }
 
-  var payment = built.payment;
-  var htmlContent = buildInvoiceHTML_(payment, built.invoiceNumber);
-  var blob = Utilities.newBlob(htmlContent, "text/html", "Invoice.html");
-  var pdfBlob = blob.getAs("application/pdf");
-  pdfBlob.setName("Invoice_" + built.invoiceNumber.replace(/\//g, "-") + ".pdf");
-
-  var invoiceUrl = saveInvoiceToDrive_(projectId, pdfBlob);
-  var proofBlob = getProofBlobFromApproval_(approval);
   var proofUrl = approval.proofUrl || "";
-  var sentAt = new Date().toLocaleString("id-ID");
-
-  MailApp.sendEmail({
-    to: approval.clientEmail,
-    name: getMailIdentity_().name,
-    replyTo: getMailIdentity_().replyTo,
-    subject: "[FA Studio] Invoice " + built.invoiceNumber + " — " + lead.clientName,
-    htmlBody: buildInvoiceEmailBody_(payment, built.invoiceNumber, invoiceUrl),
-    attachments: [pdfBlob]
-  });
-
-  payment.invoiceNumber = built.invoiceNumber;
-  payment.invoiceUrl = invoiceUrl;
-  payment.proofUrl = proofUrl;
-  payment.invoiceSentAt = sentAt;
-
   upsertPaymentRecord_({
     paymentId: built.paymentId,
     projectId: projectId,
@@ -9257,8 +9618,8 @@ function finalizeApprovedPayment_(approval, ctx) {
     validatedAt: built.validatedAt,
     validatedBy: ctx.email,
     invoiceNumber: built.invoiceNumber,
-    invoiceUrl: invoiceUrl,
-    invoiceSentAt: sentAt,
+    invoiceUrl: "",
+    invoiceSentAt: "",
     createdAt: existing.createdAt || new Date().toLocaleString("id-ID")
   });
 
@@ -9273,13 +9634,11 @@ function finalizeApprovedPayment_(approval, ctx) {
     paymentMethod: approval.paymentMethod || "",
     paymentDate: approval.paymentDate || "",
     bankReference: "",
-    invoiceUrl: invoiceUrl,
+    invoiceUrl: "",
     proofUrl: proofUrl,
     validatedBy: ctx.email,
     notes: approval.notes || ""
   });
-
-  sendInvoiceInternalNotification_(payment, built.invoiceNumber, invoiceUrl, pdfBlob, proofBlob, proofUrl);
 
   logPaymentStatusChange_(built.paymentId, built.oldStatus, built.nextPaymentStatus, ctx.email,
     "Invoice #" + built.invoiceSeq + " disetujui Direktur: Rp " + built.currentAmount.toLocaleString("id-ID")
@@ -9293,30 +9652,41 @@ function finalizeApprovedPayment_(approval, ctx) {
     reviewNotes: ""
   });
 
-  sendOfficerPaymentDecisionEmail_({
-    decision: "APPROVED",
-    approval: approval,
+  patchPaymentWriteCaches_(Object.assign({}, approval, {
+    status: "APPROVED",
+    paymentId: built.paymentId,
     reviewedBy: ctx.email,
+    reviewedAt: built.validatedAt
+  }), "APPROVED", {
+    paymentId: built.paymentId,
+    paymentStatus: built.nextPaymentStatus,
+    amount: built.newTotal,
+    totalPaid: built.newTotal,
+    lastAmount: built.currentAmount,
+    projectTotal: built.projectTotal || "",
+    remainingAmount: built.remainingAmount,
+    paymentMethod: approval.paymentMethod || "",
     invoiceNumber: built.invoiceNumber,
-    invoiceUrl: invoiceUrl,
-    paymentStatus: built.nextPaymentStatus
+    invoiceUrl: "",
+    invoiceCount: built.invoiceSeq
   });
 
-  var driveGate = { unlocked: false, reason: "" };
-  try {
-    driveGate = syncClientDriveGate_(projectId);
-  } catch (driveGateErr) {
-    Logger.log("syncClientDriveGate_ setelah payment approve gagal: " + driveGateErr.message);
-    driveGate = { unlocked: false, reason: driveGateErr.message };
-  }
+  enqueuePaymentJob_({
+    type: "PAYMENT_APPROVE_DISPATCH",
+    approvalId: approval.approvalId,
+    invoiceNumber: built.invoiceNumber,
+    projectId: projectId,
+    reviewedBy: ctx.email || ""
+  });
 
-  invalidateAllDataCaches_();
   return {
     success: true,
+    dispatchPending: true,
     invoiceNumber: built.invoiceNumber,
-    invoiceUrl: invoiceUrl,
+    invoiceUrl: "",
     sentTo: approval.clientEmail,
     projectId: projectId,
+    paymentId: built.paymentId,
     lastAmount: built.currentAmount,
     totalPaid: built.newTotal,
     previousTotal: built.previousTotal,
@@ -9324,8 +9694,260 @@ function finalizeApprovedPayment_(approval, ctx) {
     remainingAmount: built.remainingAmount,
     proofUrl: proofUrl,
     paymentStatus: built.nextPaymentStatus,
-    driveGate: driveGate,
     approvalId: approval.approvalId
+  };
+}
+
+function runPaymentApproveDispatch_(job) {
+  job = job || {};
+  var approvalId = String(job.approvalId || "").trim();
+  if (!approvalId) return { done: true };
+  var approval = getPaymentApprovalById_(approvalId);
+  if (!approval || approval.status !== "APPROVED") return { done: true };
+
+  var projectId = normalizeProjectId_(approval.projectId);
+  var lead = getLeadByProjectId_(projectId);
+  if (!lead) throw new Error("Lead tidak ditemukan untuk dispatch invoice.");
+
+  var paymentsMap = getPaymentsMapByProject_();
+  var existing = paymentsMap[projectId] || {};
+  var invoiceUrl = String(existing.invoiceUrl || "").trim();
+  var invoiceNumber = String(job.invoiceNumber || existing.invoiceNumber || "").trim();
+  var currentAmount = Number(existing.lastAmount || approval.amount || 0);
+  var totalPaid = Number(existing.amount || 0);
+  var projectTotal = Number(existing.projectTotal || approval.projectTotal || lead.projectTotal || 0);
+  var remainingAmount = projectTotal ? Math.max(projectTotal - totalPaid, 0) : (existing.remainingAmount || "");
+  var paymentStatus = normalizePaymentStage_(existing.paymentStatus);
+  var paymentId = String(existing.paymentId || approval.paymentId || "");
+  var payment = {
+    paymentId: paymentId,
+    projectId: projectId,
+    clientName: lead.clientName,
+    category: lead.category || "",
+    clientEmail: approval.clientEmail,
+    amount: currentAmount,
+    currentAmount: currentAmount,
+    totalPaid: totalPaid,
+    previousTotal: Math.max(totalPaid - currentAmount, 0),
+    projectTotal: projectTotal,
+    remainingAmount: remainingAmount,
+    paymentMethod: approval.paymentMethod || existing.paymentMethod || "",
+    paymentDate: approval.paymentDate || existing.paymentDate || "",
+    notes: approval.notes || "",
+    paymentStatus: paymentStatus,
+    invoiceNumber: invoiceNumber,
+    proofUrl: approval.proofUrl || existing.proofUrl || ""
+  };
+  var ctx = { email: job.reviewedBy || approval.reviewedBy || "" };
+
+  var pdfBlob = null;
+  if (!invoiceUrl) {
+    var htmlContent = buildInvoiceHTML_(payment, invoiceNumber);
+    var blob = Utilities.newBlob(htmlContent, "text/html", "Invoice.html");
+    pdfBlob = blob.getAs("application/pdf");
+    pdfBlob.setName("Invoice_" + String(invoiceNumber).replace(/\//g, "-") + ".pdf");
+    invoiceUrl = saveInvoiceToDrive_(projectId, pdfBlob) || "";
+    if (invoiceUrl) {
+      upsertPaymentRecord_({
+        paymentId: paymentId,
+        projectId: projectId,
+        invoiceNumber: invoiceNumber,
+        invoiceUrl: invoiceUrl,
+        invoiceSentAt: new Date().toLocaleString("id-ID")
+      });
+      updateInvoiceUrlByNumber_(invoiceNumber, invoiceUrl);
+    }
+  } else {
+    try {
+      var htmlAgain = buildInvoiceHTML_(payment, invoiceNumber);
+      pdfBlob = Utilities.newBlob(htmlAgain, "text/html", "Invoice.html").getAs("application/pdf");
+      pdfBlob.setName("Invoice_" + String(invoiceNumber).replace(/\//g, "-") + ".pdf");
+    } catch (pdfErr) {
+      Logger.log("PDF ulang untuk email gagal: " + pdfErr.message);
+    }
+  }
+
+  payment.invoiceUrl = invoiceUrl;
+  var mailKey = "PAY_MAIL_" + approvalId;
+  var props = PropertiesService.getScriptProperties();
+  if (!props.getProperty(mailKey)) {
+    if (!pdfBlob) throw new Error("PDF invoice belum siap untuk email klien.");
+    MailApp.sendEmail({
+      to: approval.clientEmail,
+      name: getMailIdentity_().name,
+      replyTo: getMailIdentity_().replyTo,
+      subject: "[FA Studio] Invoice " + invoiceNumber + " — " + lead.clientName,
+      htmlBody: buildInvoiceEmailBody_(payment, invoiceNumber, invoiceUrl),
+      attachments: [pdfBlob]
+    });
+    props.setProperty(mailKey, "1");
+  }
+
+  try {
+    var proofBlob = getProofBlobFromApproval_(approval);
+    sendInvoiceInternalNotification_(
+      payment,
+      invoiceNumber,
+      invoiceUrl,
+      pdfBlob,
+      proofBlob,
+      approval.proofUrl || ""
+    );
+  } catch (internErr) {
+    Logger.log("Email intern invoice gagal: " + internErr.message);
+  }
+  try {
+    sendOfficerPaymentDecisionEmail_({
+      decision: "APPROVED",
+      approval: approval,
+      reviewedBy: ctx.email,
+      invoiceNumber: invoiceNumber,
+      invoiceUrl: invoiceUrl,
+      paymentStatus: paymentStatus
+    });
+  } catch (officerErr) {
+    Logger.log("Email officer invoice gagal: " + officerErr.message);
+  }
+  try { syncClientDriveGate_(projectId); } catch (aclErr) {
+    Logger.log("syncClientDriveGate_ dispatch gagal: " + aclErr.message);
+  }
+
+  patchCachedPaymentMapEntry_(projectId, {
+    invoiceNumber: invoiceNumber,
+    invoiceUrl: invoiceUrl,
+    paymentStatus: paymentStatus
+  });
+
+  return { done: true, invoiceUrl: invoiceUrl, invoiceNumber: invoiceNumber };
+}
+
+function finalizeApprovedPayment_(approval, ctx) {
+  return persistApprovedPaymentCore_(approval, ctx);
+}
+
+/**
+ * Wave 4: upload bukti lebih dulu (payload base64 terpisah),
+ * lalu submitPaymentForReview hanya kirim proofFileId.
+ */
+function uploadPaymentProof(accessKey, proofFile, meta) {
+  var ctx = requireInternalRole_(accessKey);
+  try {
+    meta = meta || {};
+    var projectId = normalizeProjectId_(meta.projectId || "");
+    if (!projectId) {
+      return { success: false, error: "Pilih project terlebih dahulu sebelum mengunggah bukti." };
+    }
+    if (!proofFile || !proofFile.data) {
+      return { success: false, error: "Bukti transfer wajib dilampirkan." };
+    }
+    var proofValidation = validateProofFile_(proofFile);
+    if (!proofValidation.success) return proofValidation;
+
+    var tempPaymentId = "TEMP-" + String(new Date().getTime()).slice(-8);
+    var proofResult = saveTransferProofToDrive_(projectId, tempPaymentId, proofFile);
+    if (!proofResult.url) {
+      return { success: false, error: "Gagal menyimpan bukti transfer ke Drive." };
+    }
+    var proofFileId = "";
+    try {
+      var idMatch = String(proofResult.url).match(/[-\w]{25,}/);
+      if (idMatch) proofFileId = idMatch[0];
+    } catch (eId) {}
+    if (!proofFileId && proofResult.fileId) proofFileId = proofResult.fileId;
+    if (!proofFileId) {
+      return { success: false, error: "Upload berhasil tapi ID file tidak terbaca. Coba lagi." };
+    }
+    rememberUploadedProof_(ctx.email, proofFileId);
+    var approxBytes = Math.ceil(String(proofFile.data || "").length * 3 / 4);
+    return {
+      success: true,
+      proofFileId: proofFileId,
+      proofUrl: proofResult.url,
+      proofFileName: sanitizeProofFileName_((proofFile && proofFile.name) || "bukti-transfer"),
+      mimeType: (proofValidation && proofValidation.mimeType) || proofFile.mimeType || "",
+      bytes: approxBytes,
+      projectId: projectId
+    };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+function rememberUploadedProof_(email, fileId) {
+  try {
+    CacheService.getScriptCache().put(
+      "proof_up_" + Utilities.base64EncodeWebSafe(String(email || "").toLowerCase()).slice(0, 40) + "_" + String(fileId || ""),
+      "1",
+      3600
+    );
+  } catch (e) {}
+}
+
+function assertUploadedProof_(email, fileId) {
+  try {
+    return CacheService.getScriptCache().get(
+      "proof_up_" + Utilities.base64EncodeWebSafe(String(email || "").toLowerCase()).slice(0, 40) + "_" + String(fileId || "")
+    ) === "1";
+  } catch (e) {
+    return false;
+  }
+}
+
+/** Pakai file yang sudah di-upload, atau simpan base64 legacy. */
+function resolvePaymentProofAttachment_(ctx, invoiceData, projectId, paymentId) {
+  invoiceData = invoiceData || {};
+  var proofFileId = String(invoiceData.proofFileId || "").trim();
+  var proofUrl = String(invoiceData.proofUrl || "").trim();
+  var proofFileName = sanitizeProofFileName_(invoiceData.proofFileName || "bukti-transfer");
+
+  if (proofFileId) {
+    if (!assertUploadedProof_(ctx.email, proofFileId)) {
+      return { success: false, error: "Bukti transfer tidak dikenali. Pilih ulang file lalu submit lagi." };
+    }
+    try {
+      var file = DriveApp.getFileById(proofFileId);
+      if (!proofUrl) proofUrl = file.getUrl();
+      if (invoiceData.proofFileName) {
+        // keep client name; Drive name may be TEMP_*
+      } else {
+        proofFileName = sanitizeProofFileName_(file.getName() || proofFileName);
+      }
+      try {
+        var finalName = "Bukti_Transfer_" + String(projectId || "").replace("#", "") + "_" + paymentId + "_" + proofFileName;
+        if (file.getName() !== finalName) file.setName(finalName);
+      } catch (eRename) {}
+      return {
+        success: true,
+        url: proofUrl,
+        fileId: proofFileId,
+        fileName: proofFileName
+      };
+    } catch (eFile) {
+      return { success: false, error: "File bukti transfer tidak ditemukan di Drive. Unggah ulang." };
+    }
+  }
+
+  if (!invoiceData.proofFile || !invoiceData.proofFile.data) {
+    return { success: false, error: "Bukti transfer wajib dilampirkan." };
+  }
+  var proofValidation = validateProofFile_(invoiceData.proofFile);
+  if (!proofValidation.success) return proofValidation;
+  var proofResult = saveTransferProofToDrive_(projectId, paymentId, invoiceData.proofFile);
+  if (!proofResult.url) {
+    return { success: false, error: "Gagal menyimpan bukti transfer ke Drive." };
+  }
+  var newId = proofResult.fileId || "";
+  if (!newId) {
+    try {
+      var match = String(proofResult.url).match(/[-\w]{25,}/);
+      if (match) newId = match[0];
+    } catch (eMatch) {}
+  }
+  return {
+    success: true,
+    url: proofResult.url,
+    fileId: newId,
+    fileName: sanitizeProofFileName_((invoiceData.proofFile && invoiceData.proofFile.name) || "bukti-transfer")
   };
 }
 
@@ -9349,11 +9971,11 @@ function submitPaymentForReview(accessKey, invoiceData) {
     if (!invoiceData.amount || Number(invoiceData.amount) <= 0) {
       return { success: false, error: "Jumlah pembayaran harus diisi." };
     }
-    if (!invoiceData.proofFile || !invoiceData.proofFile.data) {
+    var hasEagerProof = !!(invoiceData.proofFileId);
+    var hasInlineProof = !!(invoiceData.proofFile && invoiceData.proofFile.data);
+    if (!hasEagerProof && !hasInlineProof) {
       return { success: false, error: "Bukti transfer wajib dilampirkan." };
     }
-    var proofValidation = validateProofFile_(invoiceData.proofFile);
-    if (!proofValidation.success) return proofValidation;
 
     var paymentsMap = getPaymentsMapByProject_();
     var existing = paymentsMap[projectId] || {};
@@ -9381,10 +10003,8 @@ function submitPaymentForReview(accessKey, invoiceData) {
     }
 
     var paymentId = existing.paymentId || ("PAY-" + new Date().getFullYear() + "-" + String(new Date().getTime()).slice(-4));
-    var proofResult = saveTransferProofToDrive_(projectId, paymentId, invoiceData.proofFile);
-    if (!proofResult.url) {
-      return { success: false, error: "Gagal menyimpan bukti transfer ke Drive." };
-    }
+    var proofResolved = resolvePaymentProofAttachment_(ctx, invoiceData, projectId, paymentId);
+    if (!proofResolved.success) return proofResolved;
 
     var requestedPaymentStatus = normalizePaymentStage_(invoiceData.paymentStatus || invoiceData.requestedPaymentStatus || "");
     if (projectTotal && Math.max(projectTotal - newTotal, 0) <= 0) {
@@ -9394,12 +10014,6 @@ function submitPaymentForReview(accessKey, invoiceData) {
     } else if (requestedPaymentStatus === "LUNAS" && projectTotal && (projectTotal - newTotal) > 0) {
       return { success: false, error: "Status Lunas hanya bisa dipilih jika sisa pembayaran setelah invoice ini = 0." };
     }
-
-    var proofFileId = "";
-    try {
-      var idMatch = String(proofResult.url).match(/[-\w]{25,}/);
-      if (idMatch) proofFileId = idMatch[0];
-    } catch (e) {}
 
     var approval = appendPaymentApproval_({
       projectId: projectId,
@@ -9411,9 +10025,9 @@ function submitPaymentForReview(accessKey, invoiceData) {
       paymentMethod: invoiceData.paymentMethod || "",
       paymentDate: invoiceData.paymentDate || "",
       notes: invoiceData.notes || "",
-      proofUrl: proofResult.url,
-      proofFileName: sanitizeProofFileName_((invoiceData.proofFile && invoiceData.proofFile.name) || "bukti-transfer"),
-      proofFileId: proofFileId,
+      proofUrl: proofResolved.url,
+      proofFileName: proofResolved.fileName,
+      proofFileId: proofResolved.fileId,
       requestedPaymentStatus: requestedPaymentStatus,
       status: "PENDING",
       submittedBy: ctx.email,
@@ -9429,17 +10043,21 @@ function submitPaymentForReview(accessKey, invoiceData) {
       return approved;
     }
 
-    sendPendingPaymentReviewNotification_(approval);
-    invalidateAllDataCaches_();
+    enqueuePaymentJob_({
+      type: "PAYMENT_SUBMIT_NOTIFY",
+      approvalId: approval.approvalId
+    });
+    patchPaymentWriteCaches_(approval, "PENDING");
     return {
       success: true,
       pending: true,
+      dispatchPending: true,
       approvalId: approval.approvalId,
       projectId: projectId,
       amount: currentAmount,
       projectTotal: projectTotal || "",
       remainingPreview: projectTotal ? Math.max(projectTotal - newTotal, 0) : "",
-      proofUrl: proofResult.url,
+      proofUrl: proofResolved.url,
       requestedPaymentStatus: requestedPaymentStatus,
       status: "PENDING_REVIEW",
       message: "Pengajuan pembayaran menunggu approval Direktur."
@@ -10206,13 +10824,18 @@ function rejectPaymentSubmission(accessKey, approvalId, reviewNotes) {
       reviewedAt: new Date().toLocaleString("id-ID"),
       reviewNotes: reviewNotes
     });
-    sendOfficerPaymentDecisionEmail_({
-      decision: "REJECTED",
-      approval: approval,
+    var rejectedApproval = Object.assign({}, approval, {
+      status: "REJECTED",
       reviewedBy: ctx.email,
       reviewNotes: reviewNotes
     });
-    invalidateAllDataCaches_();
+    patchPaymentWriteCaches_(rejectedApproval, "REJECTED");
+    enqueuePaymentJob_({
+      type: "PAYMENT_REJECT_NOTIFY",
+      approvalId: approval.approvalId,
+      reviewedBy: ctx.email,
+      reviewNotes: reviewNotes
+    });
     appendAuditLog_(
       ctx.email,
       "PAYMENT_REJECT",
@@ -10222,6 +10845,7 @@ function rejectPaymentSubmission(accessKey, approvalId, reviewNotes) {
     );
     return {
       success: true,
+      dispatchPending: true,
       approvalId: approval.approvalId,
       projectId: approval.projectId,
       status: "REJECTED",
@@ -10503,17 +11127,17 @@ function inspectProofFileName_(name) {
 
 function saveTransferProofToDrive_(projectId, paymentId, proofFile) {
   var proofBlob = buildProofBlob_(proofFile, projectId, paymentId);
-  if (!proofBlob) return { blob: null, url: "" };
+  if (!proofBlob) return { blob: null, url: "", fileId: "" };
 
   try {
     // Jangan simpan di folder project klien — klien bisa lihat sebagai viewer.
     var folder = getInternalProofFolderForProject_(projectId);
     var file = folder.createFile(proofBlob);
     logDriveAsset_(projectId, "TRANSFER_PROOF", file.getUrl(), file.getId(), file.getName(), "PaymentInvoices");
-    return { blob: proofBlob, url: file.getUrl() };
+    return { blob: proofBlob, url: file.getUrl(), fileId: file.getId() };
   } catch (e) {
     Logger.log("Save bukti transfer gagal: " + e.message);
-    return { blob: proofBlob, url: "" };
+    return { blob: proofBlob, url: "", fileId: "" };
   }
 }
 

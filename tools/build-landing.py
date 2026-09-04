@@ -2,11 +2,11 @@
 """Assemble the Vercel public site + login gate for FA Studio.
 
 Architecture (locked):
-  Vercel  → Home, Work, Services, About, and the Login gate URL (/signin)
+  Vercel  → Home, Work, Services, About, and the Login gate URL (/user)
   GAS     → everything after the login gate: Sign In/Up UI, client portal,
             and the full internal ops system (dashboard, billing, production, …)
 
-The login page is served from Vercel (`/signin`) so the address bar stays on
+The login page is served from Vercel (`/user`) so the address bar stays on
 fastudio.id. Behind that URL, a same-origin shell embeds the GAS auth/ops app
 (iframe). Marketing pages never load GAS.
 
@@ -115,7 +115,7 @@ def build_index() -> str:
 <link rel="apple-touch-icon" href="assets/fa-app-icon.png" sizes="180x180"/>
 <link rel="preconnect" href="https://script.google.com" crossorigin/>
 <link rel="dns-prefetch" href="https://script.google.com"/>
-<link rel="prefetch" href="/signin"/>
+<link rel="prefetch" href="/user"/>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600;1,700;1,800&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="styles.css"/>
 <script>
@@ -167,7 +167,7 @@ def build_app_html() -> str:
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Sign In — FA Studio Indonesia</title>
+<title>Sign In - FA Studio Indonesia</title>
 <meta name="description" content="Sign in to FA Studio Indonesia. Login gate for client portal and internal ops."/>
 <link rel="icon" href="assets/fa-app-icon.png" type="image/png" sizes="512x512"/>
 <link rel="apple-touch-icon" href="assets/fa-app-icon.png" sizes="180x180"/>
@@ -242,7 +242,7 @@ __PRELOAD__
   var params = new URLSearchParams(window.location.search || '');
   var page = String(params.get('page') || 'ops').trim().toLowerCase();
   if (page === 'faq-contact') page = 'about';
-  if (page === 'booking' || page === 'login' || page === 'signin' || page === 'create') page = 'ops';
+  if (page === 'booking' || page === 'login' || page === 'signin' || page === 'user' || page === 'create') page = 'ops';
   if (page !== 'ops' && page !== 'reset-password') page = 'ops';
 
   var base = String(window.GAS_APP_URL || '').replace(/\\/$/, '');
@@ -280,8 +280,26 @@ __PRELOAD__
   }, 20000);
 
   try {
-    document.title = (page === 'reset-password' ? 'Reset Password' : 'Sign In') + ' — FA Studio Indonesia';
+    document.title = (page === 'reset-password' ? 'Reset Password' : 'Sign In') + ' - FA Studio Indonesia';
   } catch (e) {}
+
+  // GAS iframe mem-post title per peran setelah login / logout.
+  window.addEventListener('message', function (ev) {
+    try {
+      var origin = String(ev.origin || '');
+      if (
+        origin.indexOf('script.google.com') < 0 &&
+        origin.indexOf('googleusercontent.com') < 0
+      ) {
+        return;
+      }
+      var data = ev.data;
+      if (!data || data.type !== 'fa-studio-title' || typeof data.title !== 'string') return;
+      var next = String(data.title || '').trim();
+      if (!next) return;
+      document.title = next;
+    } catch (err) {}
+  });
 })();
   </script>
 </body>
@@ -293,7 +311,7 @@ def build_bridge_js() -> str:
     return r"""
 /* Bridge:
  * Vercel = Home / Work / Services / About (marketing)
- * /signin = login gate on Vercel → GAS handles Sign In + client portal + internal ops
+ * /user = login gate on Vercel → GAS handles Sign In + client portal + internal ops
  */
 function gasAppUrl_(page) {
   var base = (window.GAS_APP_URL || '').replace(/\/$/, '');
@@ -305,13 +323,13 @@ function gasAppUrl_(page) {
   return base + '?page=' + encodeURIComponent(page);
 }
 
-/** Canonical login gate on Vercel. Aliases /app /ops /booking also work via vercel.json. */
+/** Canonical login gate on Vercel. Aliases /signin /app /ops /booking also work. */
 function localSignInPath_(page) {
   var p = String(page || 'ops').trim().toLowerCase();
-  if (p === 'booking' || p === 'login' || p === 'signin' || p === 'create') p = 'ops';
+  if (p === 'booking' || p === 'login' || p === 'signin' || p === 'user' || p === 'create') p = 'ops';
   if (p !== 'ops' && p !== 'reset-password') p = 'ops';
-  if (p === 'ops') return '/signin';
-  return '/signin?page=' + encodeURIComponent(p);
+  if (p === 'ops') return '/user';
+  return '/user?page=' + encodeURIComponent(p);
 }
 
 function warmGasApp_() {
@@ -322,7 +340,7 @@ function warmGasApp_() {
     fetch(warm, { mode: 'no-cors', credentials: 'omit', keepalive: true });
   } catch (e1) {}
   try {
-    fetch('/signin', { credentials: 'omit', cache: 'force-cache', keepalive: true });
+    fetch('/user', { credentials: 'omit', cache: 'force-cache', keepalive: true });
   } catch (e3) {}
 }
 
@@ -356,8 +374,8 @@ function openStartProject() {
 
 function setPage(page) {
   if (page === 'faq-contact') page = 'about';
-  if (page === 'booking' || page === 'ops' || page === 'reset-password' || page === 'signin' || page === 'login') {
-    goToGasApp(page === 'booking' || page === 'signin' || page === 'login' ? 'ops' : page);
+  if (page === 'booking' || page === 'ops' || page === 'reset-password' || page === 'signin' || page === 'login' || page === 'user') {
+    goToGasApp(page === 'booking' || page === 'signin' || page === 'login' || page === 'user' ? 'ops' : page);
     return;
   }
 
@@ -413,8 +431,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var q = String(params.get('page') || '').trim().toLowerCase();
     if (q === 'faq-contact') q = 'about';
     if (q === 'gallery' || q === 'about' || q === 'home') initial = q;
-    if (q === 'ops' || q === 'booking' || q === 'reset-password' || q === 'signin' || q === 'login') {
-      goToGasApp(q === 'booking' || q === 'signin' || q === 'login' ? 'ops' : q);
+    if (q === 'ops' || q === 'booking' || q === 'reset-password' || q === 'signin' || q === 'login' || q === 'user') {
+      goToGasApp(q === 'booking' || q === 'signin' || q === 'login' || q === 'user' ? 'ops' : q);
       return;
     }
   } catch (e2) {}
@@ -538,9 +556,13 @@ def write_vercel_json() -> None:
     (OUT / "vercel.json").write_text(
         """{
   "cleanUrls": true,
+  "redirects": [
+    { "source": "/signin", "destination": "/user", "permanent": true }
+  ],
   "rewrites": [
-    { "source": "/ops", "destination": "/signin" },
-    { "source": "/booking", "destination": "/signin" }
+    { "source": "/ops", "destination": "/user" },
+    { "source": "/booking", "destination": "/user" },
+    { "source": "/app", "destination": "/user" }
   ],
   "headers": [
     {
@@ -566,11 +588,11 @@ def write_readme() -> None:
 | Zone | Host | Isi |
 |------|------|-----|
 | Marketing | Vercel (`fastudio.id`) | Home, Work, Services, About |
-| Login gate | Vercel (`/signin`) | Halaman login di domain FA Studio |
+| Login gate | Vercel (`/user`) | Halaman login di domain FA Studio |
 | System | GAS (di balik gate) | Sign In/Up, client portal, internal ops / bispro |
 
 Setelah lewat gate login, seluruh dashboard client dan internal system di-handle GAS.
-URL browser tetap di `fastudio.id/signin` (shell Vercel + iframe GAS).
+URL browser tetap di `fastudio.id/user` (shell Vercel + iframe GAS).
 
 ## Customize dari repo
 
@@ -587,9 +609,9 @@ URL browser tetap di `fastudio.id/signin` (shell Vercel + iframe GAS).
 | Path | Isi |
 |------|-----|
 | `/` | Home · Work · Services · About (+ mobile nav) |
-| `/signin` | **Login gate** → GAS auth + post-login system (`signin.html`, clean URL) |
-| `/app` | Alias file `app.html` (same gate) |
-| `/ops`, `/booking` | Rewrite → `/signin` |
+| `/user` | **Login / portal / ops gate** → GAS (`user.html`, clean URL) |
+| `/signin` | Redirect permanen → `/user` |
+| `/app`, `/ops`, `/booking` | Rewrite → `/user` |
 
 ## Deploy
 
@@ -614,15 +636,18 @@ def main() -> None:
     write_config_if_needed()
     (OUT / "index.html").write_text(build_index(), encoding="utf-8")
     gate = build_app_html()
+    (OUT / "user.html").write_text(gate, encoding="utf-8")
     (OUT / "app.html").write_text(gate, encoding="utf-8")
-    (OUT / "signin.html").write_text(gate, encoding="utf-8")
+    signin_legacy = OUT / "signin.html"
+    if signin_legacy.exists():
+        signin_legacy.unlink()
 
     copy_assets()
     write_vercel_json()
     write_readme()
 
     print(f"Built {OUT}")
-    print("Vercel: / = marketing · /signin = login gate → GAS system")
+    print("Vercel: / = marketing · /user = login gate → GAS system")
     print("Next: confirm GAS_APP_URL in landing/config.js, then deploy Root Directory = landing.")
 
 

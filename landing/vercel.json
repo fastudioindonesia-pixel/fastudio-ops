@@ -1,8 +1,12 @@
 {
   "cleanUrls": true,
+  "redirects": [
+    { "source": "/signin", "destination": "/user", "permanent": true }
+  ],
   "rewrites": [
-    { "source": "/ops", "destination": "/signin" },
-    { "source": "/booking", "destination": "/signin" }
+    { "source": "/ops", "destination": "/user" },
+    { "source": "/booking", "destination": "/user" },
+    { "source": "/app", "destination": "/user" }
   ],
   "headers": [
     {

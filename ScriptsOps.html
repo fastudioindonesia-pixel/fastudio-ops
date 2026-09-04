@@ -9,6 +9,7 @@ function toggleOperationShell(isAllowed) {
     ops.classList.toggle('ops-shell-open', !!isAllowed);
     if (!isAllowed) {
       ops.classList.remove('ops-sidebar-expanded');
+      ops.classList.remove('ops-shell-reveal');
       document.body.classList.remove('ops-sidebar-open');
     }
   }
@@ -29,6 +30,8 @@ function toggleOperationShell(isAllowed) {
     document.body.classList.remove('login-mode-signin', 'login-mode-signup');
     document.body.classList.add('auth-gated');
     document.body.classList.remove('public-site');
+    // Restart enter animations now that .ops-main is visible (were opacity:0 while hidden).
+    reviveOpsEnterAnimations_(ops);
   } else if (!document.getElementById('ops-access-gate') ||
              !document.getElementById('ops-access-gate').classList.contains('is-client-shell')) {
     // Login gate again (not client portal). Keep client portal auth-gated via updateAuthNavLabel.
@@ -39,6 +42,26 @@ function toggleOperationShell(isAllowed) {
   }
   updateOpsSidebarToggle();
   renderAdminProfile();
+}
+
+/** Re-run glass/chart enter after login — animations skip while parent is display:none. */
+function reviveOpsEnterAnimations_(root) {
+  root = root || document.getElementById('ops');
+  if (!root) return;
+  root.classList.remove('ops-shell-reveal');
+  var nodes = root.querySelectorAll('.glass-enter, .chart-enter, .pd-enter');
+  for (var i = 0; i < nodes.length; i++) {
+    var el = nodes[i];
+    el.style.opacity = '1';
+    el.style.transform = 'none';
+    el.style.animation = 'none';
+  }
+  // Force reflow then optionally replay once.
+  void root.offsetWidth;
+  for (var j = 0; j < nodes.length; j++) {
+    nodes[j].style.animation = '';
+  }
+  root.classList.add('ops-shell-reveal');
 }
 
 function updateOpsSidebarToggle() {
@@ -670,10 +693,16 @@ function openApprovalReview(approvalId) {
 
   // Bukti transfer tidak ikut sync massal — ambil detail saat Direktur buka review.
   if (ACTIVE_APPROVAL_TYPE === 'PAYMENT' && isDirectorUser() && !item.proofUrl && (item.hasProof || item.status === 'PENDING')) {
-    showLoading();
+    renderApprovalReviewModal(item);
+    var proofWrap = document.getElementById('am-proof-wrap');
+    if (proofWrap) {
+      proofWrap.style.display = 'block';
+      proofWrap.innerHTML = '<div class="lead-ts">Memuat bukti transfer…</div>';
+    }
+    setApprovalModalBusy(true, 'Memuat bukti…');
     google.script.run
       .withSuccessHandler(function(res) {
-        hideLoading();
+        setApprovalModalBusy(false);
         if (res && res.success && res.approval) {
           mergeApprovalDetailIntoCaches(res.approval);
           renderApprovalReviewModal(findApprovalById(approvalId) || res.approval);
@@ -683,7 +712,7 @@ function openApprovalReview(approvalId) {
         }
       })
       .withFailureHandler(function(err) {
-        hideLoading();
+        setApprovalModalBusy(false);
         showToast('Detail Gagal', err.message || 'Gagal memuat bukti.', 'warning');
         renderApprovalReviewModal(item);
       })
@@ -910,6 +939,7 @@ function showRejectNotes() {
 }
 
 function closeApprovalModal() {
+  if (APPROVAL_MODAL_BUSY) return;
   var modal = document.getElementById('approval-modal');
   if (modal) modal.classList.remove('open');
   var directorNotesWrap = document.getElementById('am-director-notes-wrap');
@@ -919,7 +949,7 @@ function closeApprovalModal() {
 }
 
 function approveActiveDept() {
-  if (!ACTIVE_APPROVAL_ID) return;
+  if (!ACTIVE_APPROVAL_ID || APPROVAL_MODAL_BUSY) return;
   var notesEl = document.getElementById('am-director-notes');
   var notes = notesEl ? notesEl.value.trim() : '';
   var item = findApprovalById(ACTIVE_APPROVAL_ID);
@@ -928,49 +958,47 @@ function approveActiveDept() {
     ? 'Approve departemen ini sebagai selesai (100% / Done)?'
     : ('Approve progress ' + prog + '% sebagai progress resmi departemen ini?');
   if (!confirm(confirmMsg)) return;
-  showLoading();
+  setApprovalModalBusy(true, 'Menyimpan...');
   google.script.run
     .withSuccessHandler(function(res) {
-      hideLoading();
+      setApprovalModalBusy(false);
       if (res && res.success) {
         var okMsg = Number(res.progress || prog) >= 100
           ? ((res.departmentLabel || 'Departemen') + ' ditandai Done.')
           : ('Progress ' + Number(res.progress || prog) + '% resmi disahkan.');
         showToast('Disetujui', okMsg);
-        closeApprovalModal();
         applyDeptApprovalLocally(res);
-        refreshPendingApprovals();
+        closeApprovalModal();
       } else {
         showToast('Gagal Approve', (res && res.error) || 'Unknown error', 'warning');
       }
     })
     .withFailureHandler(function(err) {
-      hideLoading();
+      setApprovalModalBusy(false);
       showToast('Error', err.message, 'warning');
     })
     .approveDeptCompletion(getInternalPayKey(), ACTIVE_APPROVAL_ID, notes);
 }
 
 function rejectActiveDept() {
-  if (!ACTIVE_APPROVAL_ID) return;
+  if (!ACTIVE_APPROVAL_ID || APPROVAL_MODAL_BUSY) return;
   var notesEl = document.getElementById('am-director-notes') || document.getElementById('am-reject-notes');
   var notes = notesEl ? notesEl.value.trim() : '';
   if (!notes) { showToast('Catatan Wajib', 'Isi catatan Direktur sebelum reject.', 'warning'); return; }
-  showLoading();
+  setApprovalModalBusy(true, 'Menyimpan...');
   google.script.run
     .withSuccessHandler(function(res) {
-      hideLoading();
+      setApprovalModalBusy(false);
       if (res && res.success) {
         showToast('Ditolak', 'Hasil departemen ditolak. PIC bisa ajukan ulang setelah perbaikan.');
-        closeApprovalModal();
         applyDeptApprovalLocally(res);
-        refreshPendingApprovals();
+        closeApprovalModal();
       } else {
         showToast('Gagal Reject', (res && res.error) || 'Unknown error', 'warning');
       }
     })
     .withFailureHandler(function(err) {
-      hideLoading();
+      setApprovalModalBusy(false);
       showToast('Error', err.message, 'warning');
     })
     .rejectDeptCompletion(getInternalPayKey(), ACTIVE_APPROVAL_ID, notes);
@@ -979,6 +1007,8 @@ function rejectActiveDept() {
 function applyDeptApprovalLocally(res) {
   if (!res || !res.projectId) return;
   var projectId = res.projectId;
+  var approvalId = res.approvalId || '';
+  var status = String(res.status || '').toUpperCase();
   var lead = LEADS.find(function(item) { return sameProjectIdClient(item.id, projectId); });
   if (lead) {
     if (res.opsData) lead.productionOpsData = JSON.stringify(res.opsData);
@@ -989,6 +1019,33 @@ function applyDeptApprovalLocally(res) {
       lead.productionUpdatedBy = res.production.updatedBy || lead.productionUpdatedBy;
     }
   }
+  var prior = findApprovalById(approvalId) || {
+    approvalId: approvalId,
+    projectId: projectId,
+    departmentId: res.departmentId,
+    departmentLabel: res.departmentLabel,
+    type: 'DEPT',
+    progress: res.progress
+  };
+  PENDING_APPROVALS = (PENDING_APPROVALS || []).filter(function(a) {
+    if (approvalId && a.approvalId === approvalId) return false;
+    return !(a.type === 'DEPT' && sameProjectIdClient(a.projectId, projectId) && a.departmentId === res.departmentId);
+  });
+  if (status === 'REJECTED') {
+    REJECTED_APPROVALS = (REJECTED_APPROVALS || []).filter(function(a) {
+      return !(approvalId && a.approvalId === approvalId);
+    });
+    REJECTED_APPROVALS.unshift(Object.assign({}, prior, {
+      status: 'REJECTED',
+      reviewNotes: res.reviewNotes || '',
+      type: 'DEPT'
+    }));
+  } else {
+    REJECTED_APPROVALS = (REJECTED_APPROVALS || []).filter(function(a) {
+      return !(approvalId && a.approvalId === approvalId);
+    });
+  }
+  OPS_NOTIFICATIONS = buildLocalOpsNotifications();
   delete PROJECT_TIMELINES[projectId];
   delete PROJECT_TIMELINES[String(projectId).replace(/^#/, '')];
   delete PROJECT_TIMELINES['#' + String(projectId).replace(/^#/, '')];
@@ -998,27 +1055,86 @@ function applyDeptApprovalLocally(res) {
   if (projectDetailId && sameProjectIdClient(projectDetailId, projectId)) {
     renderProjectDetail(projectDetailId, true);
   }
+  renderApprovalBell();
+  persistCurrentOpsDataCache();
+}
+
+var APPROVAL_MODAL_BUSY = false;
+
+function setApprovalModalBusy(isBusy, label) {
+  APPROVAL_MODAL_BUSY = !!isBusy;
+  var backdrop = document.getElementById('approval-modal');
+  if (backdrop) backdrop.classList.toggle('is-busy', APPROVAL_MODAL_BUSY);
+  var modal = backdrop ? backdrop.querySelector('.approval-modal') : null;
+  if (modal) modal.classList.toggle('is-busy', APPROVAL_MODAL_BUSY);
+  var actions = document.getElementById('am-actions');
+  if (!actions) return;
+  var buttons = actions.querySelectorAll('button');
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].disabled = APPROVAL_MODAL_BUSY;
+    if (APPROVAL_MODAL_BUSY && label && i === 0) {
+      if (!buttons[i].dataset.defaultLabel) buttons[i].dataset.defaultLabel = buttons[i].textContent;
+      buttons[i].textContent = label;
+    }
+  }
+}
+
+function kickPaymentSideEffects() {
+  if (typeof getInternalPayKey !== 'function') return;
+  var key = getInternalPayKey();
+  if (!key) return;
+  google.script.run
+    .withSuccessHandler(function(res) { applyPaymentDispatchResults(res); })
+    .withFailureHandler(function() {})
+    .dispatchPaymentSideEffects(key);
+}
+
+function applyPaymentDispatchResults(res) {
+  if (!res || !res.results || !res.results.length) return;
+  var patched = false;
+  (res.results || []).forEach(function(item) {
+    if (!item || !item.success || !item.invoiceUrl) return;
+    if (item.projectId) {
+      patchLastPaymentMapEntry(item.projectId, {
+        invoiceUrl: item.invoiceUrl,
+        invoiceNumber: item.invoiceNumber || undefined
+      });
+      patched = true;
+      return;
+    }
+    if (!item.invoiceNumber) return;
+    Object.keys(LAST_PAYMENT_MAP || {}).forEach(function(key) {
+      var row = LAST_PAYMENT_MAP[key];
+      if (row && row.invoiceNumber === item.invoiceNumber) {
+        LAST_PAYMENT_MAP[key] = Object.assign({}, row, { invoiceUrl: item.invoiceUrl });
+        patched = true;
+      }
+    });
+  });
+  if (!patched) return;
+  PAYMENT_CLIENTS = buildPaymentClientsFromLeads(LEADS, LAST_PAYMENT_MAP);
+  renderOperationDataViews();
+  persistCurrentOpsDataCache();
 }
 
 function approveActivePayment() {
-  if (!ACTIVE_APPROVAL_ID) return;
-  if (!confirm('Approve pengajuan ini? Invoice akan digenerate dan dikirim ke email klien.')) return;
-  showLoading();
+  if (!ACTIVE_APPROVAL_ID || APPROVAL_MODAL_BUSY) return;
+  if (!confirm('Approve pengajuan ini? Invoice akan dicatat, lalu PDF dikirim ke email klien.')) return;
+  setApprovalModalBusy(true, 'Menyimpan...');
   google.script.run
     .withSuccessHandler(function(res) {
-      hideLoading();
+      setApprovalModalBusy(false);
       if (res && res.success) {
-        showToast('Approved', (res.invoiceNumber || 'Invoice')+' dikirim ke '+(res.sentTo || 'klien'));
-        closeApprovalModal();
+        showToast('Disetujui', (res.invoiceNumber || 'Invoice') + ' dicatat. Email ke ' + (res.sentTo || 'klien') + ' dikirim di latar belakang.');
         applyApprovedPaymentLocally(res);
-        loadOperationData({ source: 'payments', showLoading: false });
-        refreshPendingApprovals();
+        closeApprovalModal();
+        kickPaymentSideEffects();
       } else {
         showToast('Gagal Approve', (res && res.error) || 'Unknown error', 'warning');
       }
     })
     .withFailureHandler(function(err) {
-      hideLoading();
+      setApprovalModalBusy(false);
       showToast('Error', err.message, 'warning');
     })
     .approvePaymentSubmission(getInternalPayKey(), ACTIVE_APPROVAL_ID);
@@ -1028,26 +1144,50 @@ function applyApprovedPaymentLocally(res) {
   applyValidatedPaymentLocally(res);
 }
 
+function applyRejectedPaymentLocally(res) {
+  if (!res || !res.projectId) return;
+  var approvalId = res.approvalId || '';
+  var projectId = res.projectId;
+  var item = findApprovalById(approvalId) || { projectId: projectId, approvalId: approvalId, type: 'PAYMENT' };
+  PENDING_APPROVALS = (PENDING_APPROVALS || []).filter(function(a) {
+    if (approvalId && a.approvalId === approvalId) return false;
+    return !sameProjectIdClient(a.projectId, projectId);
+  });
+  REJECTED_APPROVALS = (REJECTED_APPROVALS || []).filter(function(a) {
+    return !(approvalId && a.approvalId === approvalId);
+  });
+  REJECTED_APPROVALS.unshift(Object.assign({}, item, {
+    status: 'REJECTED',
+    reviewNotes: res.reviewNotes || item.reviewNotes || '',
+    type: 'PAYMENT'
+  }));
+  OPS_NOTIFICATIONS = buildLocalOpsNotifications();
+  PAYMENT_CLIENTS = buildPaymentClientsFromLeads(LEADS, LAST_PAYMENT_MAP || {});
+  renderOperationDataViews();
+  renderApprovalBell();
+  persistCurrentOpsDataCache();
+}
+
 function rejectActivePayment() {
-  if (!ACTIVE_APPROVAL_ID) return;
+  if (!ACTIVE_APPROVAL_ID || APPROVAL_MODAL_BUSY) return;
   var notesEl = document.getElementById('am-reject-notes');
   var notes = notesEl ? notesEl.value.trim() : '';
   if (!notes) { showToast('Catatan Wajib', 'Isi alasan reject untuk Officer.', 'warning'); return; }
-  showLoading();
+  setApprovalModalBusy(true, 'Menyimpan...');
   google.script.run
     .withSuccessHandler(function(res) {
-      hideLoading();
+      setApprovalModalBusy(false);
       if (res && res.success) {
         showToast('Ditolak', 'Pengajuan ditolak. Officer bisa submit ulang.');
+        applyRejectedPaymentLocally(res);
         closeApprovalModal();
-        loadOperationData({ source: 'payments', showLoading: false });
-        refreshPendingApprovals();
+        kickPaymentSideEffects();
       } else {
         showToast('Gagal Reject', (res && res.error) || 'Unknown error', 'warning');
       }
     })
     .withFailureHandler(function(err) {
-      hideLoading();
+      setApprovalModalBusy(false);
       showToast('Error', err.message, 'warning');
     })
     .rejectPaymentSubmission(getInternalPayKey(), ACTIVE_APPROVAL_ID, notes);
@@ -1064,33 +1204,52 @@ function openOperationSystem() {
     openClientPortalFromSession();
     return;
   }
-  _opsUnlocked = true;
-  _internalPayUnlocked = true;
-  // Gate CSS + nav before paint of shell, so login card cannot linger over dashboard.
-  if (typeof applyPublicNavGate === 'function') applyPublicNavGate();
-  toggleOperationShell(true);
-  applyOpsNavPermissions();
-  initPaymentAuth();
-  if (typeof syncAuthBrandLogos === 'function') syncAuthBrandLogos();
-  // Snapshot terakhir dirender dulu supaya angka langsung terlihat. Kalau tidak ada
-  // snapshot, setView memicu fetch dengan overlay — lebih baik daripada dashboard nol.
-  var hadCache = hydrateOpsDataFromCache();
-  setView(isDeptPicUser() ? 'production-ops' : 'analytics');
-  renderApprovalBell();
-  if (typeof updateAuthNavLabel === 'function') updateAuthNavLabel();
-  if (hadCache && !OPS_DATA_SERVER_FRESH) {
-    // Snapshot lama sudah tampil → segarkan di belakang tanpa overlay.
+  try {
+    _opsUnlocked = true;
+    _internalPayUnlocked = true;
+    // Gate CSS + nav before paint of shell, so login card cannot linger over dashboard.
+    if (typeof applyPublicNavGate === 'function') applyPublicNavGate();
+    toggleOperationShell(true);
+    applyOpsNavPermissions();
+    initPaymentAuth();
+    if (typeof syncAuthBrandLogos === 'function') syncAuthBrandLogos();
+    var hadCache = false;
+    try { hadCache = hydrateOpsDataFromCache(); } catch (eHydra) { hadCache = false; }
+    // skipLoad: jangan biarkan setView memulai fetch+overlay (race dengan login).
+    setView(isDeptPicUser() ? 'production-ops' : 'analytics', true);
+    renderApprovalBell();
+    if (typeof updateAuthNavLabel === 'function') updateAuthNavLabel();
+    if (OPS_DATA_SERVER_FRESH) {
+      if (typeof renderOperationDataViews === 'function') renderOperationDataViews();
+      return;
+    }
+    // Satu fetch tanpa overlay — overlay login sudah selesai.
     if (isDeptPicUser()) loadProductionOpsData({ showLoading: false });
     else loadOperationData({ source: 'all', showLoading: false });
+    if (!hadCache && typeof renderOperationDataViews === 'function') {
+      // Skeleton/zero state tetap terlihat sambil data datang.
+      try { renderOperationDataViews(); } catch (eRender) {}
+    }
+  } catch (err) {
+    try { console.error('[openOperationSystem]', err); } catch (eLog) {}
+    try {
+      _opsUnlocked = true;
+      toggleOperationShell(true);
+      showToast('Dashboard', (err && err.message) || 'Sebagian UI gagal dimuat. Coba Refresh.', 'warning');
+    } catch (e2) {}
   }
 }
 
 function applyRestoredLogin(res) {
   res = res || {};
   _opsInternalRole = res.role || _opsInternalRole || 'OFFICER';
-  if (res.opsData && res.opsData.success) {
-    applyOperationDataPayload(res.opsData);
-    persistOpsDataCache(res.opsData);
+  var opsPayload = res.opsData;
+  if (typeof opsPayload === 'string' && typeof unpackServerPayload === 'function') {
+    opsPayload = unpackServerPayload(opsPayload);
+  }
+  if (opsPayload && opsPayload.success) {
+    applyOperationDataPayload(opsPayload);
+    persistOpsDataCache(opsPayload);
     OPS_DATA_SERVER_FRESH = true;
   }
   if (typeof updateAuthNavLabel === 'function') updateAuthNavLabel();
@@ -1710,6 +1869,7 @@ function updateAuthNavLabel() {
   if (mobileLabel) mobileLabel.textContent = label;
   if (typeof syncLoginNavCta_ === 'function') syncLoginNavCta_();
   if (typeof applyPublicNavGate === 'function') applyPublicNavGate();
+  else if (typeof syncDocumentTitleForSession_ === 'function') syncDocumentTitleForSession_();
 }
 
 function syncLoginNavCta_() {
@@ -1870,34 +2030,52 @@ function unlockOperationSystem() {
       try {
         console.log('[login] round-trip ' + roundTripMs + 'ms', res && res._timings ? res._timings : '(no server timings)');
       } catch (e) {}
-      if (res.success) {
-        clearLoginPasswordError();
-        if (!storeOpsLoginResult(res, email)) return;
-        // Server ikut mengirim data dashboard bila cache-nya hangat → langsung pakai.
-        if (res.opsData && res.opsData.success) {
-          applyOperationDataPayload(res.opsData);
-          persistOpsDataCache(res.opsData);
-          OPS_DATA_SERVER_FRESH = true;
-        }
-        if (String(res.role || '').toUpperCase() === 'CLIENT') {
-          showToast('Sign In Berhasil','Berhasil masuk.');
-          // Data portal ikut di response login → render langsung, tanpa fetch kedua.
-          if (res.portal && res.portal.success) showClientPortalDashboardNow(res.portal);
-          else openClientPortalFromSession();
-        } else {
-          showToast('Sign In Berhasil','Berhasil masuk.');
-          openOperationSystem();
-        }
-      } else {
+      if (!res || typeof res !== 'object') {
+        var badMsg = 'Respons login tidak valid. Coba lagi.';
+        setLoginPasswordError(badMsg);
+        showToast('Sign In Gagal', badMsg, 'warning');
+        return;
+      }
+      if (!res.success) {
         var failMsg = res.error || 'Email atau password tidak sesuai.';
         setLoginPasswordError(failMsg);
         showToast('Sign In Gagal', failMsg, 'warning');
+        return;
       }
+      clearLoginPasswordError();
+      if (!storeOpsLoginResult(res, email)) return;
+      showToast('Sign In Berhasil','Berhasil masuk.');
+      var role = String(res.role || '').toUpperCase();
+      if (role === 'CLIENT') {
+        try {
+          if (res.portal && res.portal.success) showClientPortalDashboardNow(res.portal);
+          else openClientPortalFromSession();
+        } catch (portalErr) {
+          try { openClientPortalFromSession(); } catch (e2) {}
+        }
+        return;
+      }
+      // opsData opsional — jangan biarkan payload rusak memblokir buka dashboard.
+      try {
+        var opsPayload = res.opsData;
+        if (typeof opsPayload === 'string' && typeof unpackServerPayload === 'function') {
+          opsPayload = unpackServerPayload(opsPayload);
+        }
+        if (opsPayload && opsPayload.success) {
+          applyOperationDataPayload(opsPayload);
+          persistOpsDataCache(opsPayload);
+          OPS_DATA_SERVER_FRESH = true;
+        }
+      } catch (opsErr) {
+        OPS_DATA_SERVER_FRESH = false;
+        try { console.warn('[login] opsData skip', opsErr); } catch (e3) {}
+      }
+      openOperationSystem();
     })
     .withFailureHandler(function(err) {
       hideLoading();
       resetLoginRecaptcha();
-      var failMsg = err.message || 'Sign In gagal.';
+      var failMsg = (err && err.message) || 'Sign In gagal.';
       setLoginPasswordError(failMsg);
       showToast('Error', failMsg, 'warning');
     })
@@ -2069,6 +2247,10 @@ function showClientPortalDashboardNow(res, fromCache) {
   applyClientPortalState(res, fromCache);
   toggleOperationShell(false);
   selectOperationAccess('client');
+  var clientPanel = document.getElementById('ops-client-access-panel');
+  if (clientPanel && typeof reviveOpsEnterAnimations_ === 'function') {
+    reviveOpsEnterAnimations_(clientPanel);
+  }
   if (typeof renderClientPortalHome === 'function') renderClientPortalHome();
   if (typeof updateAuthNavLabel === 'function') updateAuthNavLabel();
   try {
@@ -2131,12 +2313,22 @@ function logoutOperationSystem() {
 
 function setOperationDataLoading(isLoading, source) {
   var analyticsBtn = document.getElementById('analytics-refresh-btn');
+  var analyticsTextBtn = document.querySelector('.ops-refresh-cta--text');
   var exportBtn = document.getElementById('cashflow-export-btn');
   var syncBtn = document.getElementById('sync-btn');
   var payBtn = document.getElementById('pay-sync-btn');
   if (analyticsBtn) {
     analyticsBtn.disabled = isLoading;
-    analyticsBtn.textContent = isLoading && (source === 'analytics' || source === 'all') ? 'Refreshing...' : 'Refresh';
+    analyticsBtn.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+  }
+  if (analyticsTextBtn) {
+    analyticsTextBtn.disabled = isLoading;
+    if (!analyticsTextBtn.dataset.defaultLabel) {
+      analyticsTextBtn.dataset.defaultLabel = analyticsTextBtn.textContent.trim() || 'Refresh';
+    }
+    analyticsTextBtn.textContent = (isLoading && (source === 'analytics' || source === 'all'))
+      ? 'Refreshing...'
+      : analyticsTextBtn.dataset.defaultLabel;
   }
   if (exportBtn) {
     exportBtn.disabled = isLoading;
@@ -2186,18 +2378,22 @@ function renderOperationDataViews() {
 function loadProductionOpsData(options, onDone) {
   options = options || {};
   var loadId = ++OPS_DATA_LOAD_ID;
-  if (options.showLoading) showLoading();
+  var usedOverlay = !!options.showLoading;
+  if (usedOverlay) beginOpsOverlay_();
   setOperationDataLoading(true, 'leads');
 
   function finishLoad() {
-    if (options.showLoading) hideLoading();
+    if (usedOverlay) endOpsOverlay_();
     setOperationDataLoading(false, 'leads');
     if (typeof onDone === 'function') onDone();
   }
 
   var runner = google.script.run
     .withSuccessHandler(function(rawRes) {
-      if (loadId !== OPS_DATA_LOAD_ID) return;
+      if (loadId !== OPS_DATA_LOAD_ID) {
+        if (usedOverlay) endOpsOverlay_();
+        return;
+      }
       var res = unpackServerPayload(rawRes);
       if (res && res.success) {
         LEADS = normalizeLeadList(res.leads || []);
@@ -2225,7 +2421,10 @@ function loadProductionOpsData(options, onDone) {
       finishLoad();
     })
     .withFailureHandler(function(err) {
-      if (loadId !== OPS_DATA_LOAD_ID) return;
+      if (loadId !== OPS_DATA_LOAD_ID) {
+        if (usedOverlay) endOpsOverlay_();
+        return;
+      }
       updateOperationSyncInfo('Sync gagal · memakai data terakhir');
       renderProductionOpsView();
       finishLoad();
@@ -2341,6 +2540,7 @@ function applyValidatedPaymentLocally(res, extras) {
   });
 
   PAYMENT_CLIENTS = buildPaymentClientsFromLeads(LEADS, LAST_PAYMENT_MAP);
+  OPS_NOTIFICATIONS = buildLocalOpsNotifications();
   delete PROJECT_TIMELINES[projectId];
   delete PROJECT_TIMELINES[String(projectId).replace(/^#/, '')];
   delete PROJECT_TIMELINES['#' + String(projectId).replace(/^#/, '')];
@@ -2349,6 +2549,7 @@ function applyValidatedPaymentLocally(res, extras) {
     if (isActivityLogGateOpen(projectDetailId)) loadProjectTimeline(projectDetailId, true);
   }
   renderOperationDataViews();
+  renderApprovalBell();
   persistCurrentOpsDataCache();
 }
 
@@ -2379,11 +2580,12 @@ function loadOperationData(options, onDone) {
   var loadId = ++OPS_DATA_LOAD_ID;
   var scroller = document.querySelector('.ops-content');
   var prevScroll = scroller ? scroller.scrollTop : 0;
-  if (options.showLoading) showLoading();
+  var usedOverlay = !!options.showLoading;
+  if (usedOverlay) beginOpsOverlay_();
   setOperationDataLoading(true, source);
 
   function finishLoad() {
-    if (options.showLoading) hideLoading();
+    if (usedOverlay) endOpsOverlay_();
     setOperationDataLoading(false, source);
     if (scroller && !options.resetScroll) scroller.scrollTop = prevScroll;
     if (typeof onDone === 'function') onDone();
@@ -2399,7 +2601,11 @@ function loadOperationData(options, onDone) {
           + ' · ' + (res && res.fromCache ? 'cache hit' : 'rebuild')
           + ' · ' + (typeof rawRes === 'string' ? Math.round(rawRes.length / 1024) + 'KB' : 'objek'));
       } catch (e) {}
-      if (loadId !== OPS_DATA_LOAD_ID) return;
+      if (loadId !== OPS_DATA_LOAD_ID) {
+        // Request supersede — tetap lepas overlay milik request ini.
+        if (usedOverlay) endOpsOverlay_();
+        return;
+      }
       if (res && res.success) {
         applyOperationDataPayload(res);
         persistOpsDataCache(res);
@@ -2419,7 +2625,10 @@ function loadOperationData(options, onDone) {
       finishLoad();
     })
     .withFailureHandler(function(err) {
-      if (loadId !== OPS_DATA_LOAD_ID) return;
+      if (loadId !== OPS_DATA_LOAD_ID) {
+        if (usedOverlay) endOpsOverlay_();
+        return;
+      }
       updateOperationSyncInfo('Sync gagal · memakai data terakhir');
       renderOperationDataViews();
       finishLoad();
@@ -2436,6 +2645,7 @@ function loadOperationData(options, onDone) {
 
 // Pakai data yang sudah ada (render instan saat pindah menu),
 // hanya fetch ke server bila belum pernah dimuat.
+// Overlay penuh HANYA untuk first paint kosong (belum ada snapshot).
 function ensureOperationData(options, onDone) {
   options = options || {};
   if (OPS_DATA_READY) {
@@ -2452,13 +2662,15 @@ function ensureOperationData(options, onDone) {
     else loadOperationData({ source: options.source || 'all', showLoading: false });
     return;
   }
-  if (options.productionOpsOnly) loadProductionOpsData(options, onDone);
-  else loadOperationData(options, onDone);
+  var opts = Object.assign({}, options);
+  if (opts.showLoading == null) opts.showLoading = true;
+  if (opts.productionOpsOnly) loadProductionOpsData(opts, onDone);
+  else loadOperationData(opts, onDone);
 }
 
 function initLeadsView() {
   if (!OPS_DATA_READY) {
-    ensureOperationData({ source: 'leads', showLoading: true });
+    ensureOperationData({ source: 'leads' });
     return;
   }
   
@@ -2787,7 +2999,7 @@ function openProjectDetail(projectId) {
 
   var lead = LEADS.find(function(l) { return sameProjectIdClient(l.id, projectId); });
   if (!lead) {
-    loadOperationData({ source: 'all', force: true, showLoading: true }, function() {
+    loadOperationData({ source: 'all', force: true, showLoading: false }, function() {
       if (projectDetailId !== projectId) return;
       renderLeads();
       renderProjectDetail(projectId, true);
@@ -3451,11 +3663,11 @@ function renderAnalyticsFinancialPanel(data) {
 }
 
 function loadAnalyticsDashboard() {
-  ensureOperationData({ source: 'analytics', showLoading: true });
+  ensureOperationData({ source: 'analytics' });
 }
 
 function refreshAnalyticsData() {
-  loadOperationData({ source: 'analytics', force: true, showLoading: true });
+  loadOperationData({ source: 'analytics', force: true, showLoading: false });
 }
 
 function renderAnalyticsDashboard() {
@@ -3652,7 +3864,7 @@ function exportCashflowCsv() {
   }
 
   if (!OPS_DATA_READY) {
-    loadOperationData({ source: 'analytics', showLoading: true }, runExport);
+    loadOperationData({ source: 'analytics', showLoading: false }, runExport);
     return;
   }
   runExport();
@@ -3714,7 +3926,7 @@ function formatRupiahCompact(value) {
 }
 
 function syncSheets() {
-  loadOperationData({ source: 'leads', force: true, showLoading: true }, function() {
+  loadOperationData({ source: 'leads', force: true, showLoading: false }, function() {
     showToast('Sync Berhasil', LEADS.length+' leads dan '+PAYMENT_CLIENTS.length+' payment rows berhasil disinkronkan.');
   });
 }
@@ -3735,11 +3947,13 @@ function updateInvoiceSelect() {
 function submitIntake() {
   if (!validateBookingStep(1) || !validateBookingStep(2)) return;
   var payload = getBookingPayload();
-  showLoading();
+  var submitBtn = document.getElementById('booking-submit-btn')
+    || document.querySelector('#booking-step-3 .btn-submit');
+  setButtonBusy(submitBtn, true, 'Mengirim…');
   google.script.run
     .withSuccessHandler(function(res) {
       if (res.success) {
-        hideLoading();
+        setButtonBusy(submitBtn, false);
         if (typeof markShootingDatesTaken === 'function') markShootingDatesTaken(res.shootingDates);
         resetBookingForm(false);
         showBookingThankYou(res.projectId);
@@ -3748,7 +3962,7 @@ function submitIntake() {
           ? 'Project '+res.projectId+' sudah masuk dashboard client kamu.'
           : 'Project ID: '+res.projectId+' sudah tersimpan. Sign In untuk melihatnya di dashboard.');
       } else {
-        hideLoading();
+        setButtonBusy(submitBtn, false);
         // Tanggal direbut client lain di sela pengisian — tandai merah supaya langsung terlihat.
         if (res.shootingConflicts && typeof markShootingDatesTaken === 'function') {
           markShootingDatesTaken(res.shootingConflicts);
@@ -3758,7 +3972,7 @@ function submitIntake() {
       }
     })
     .withFailureHandler(function(err) {
-      hideLoading();
+      setButtonBusy(submitBtn, false);
       showToast('Error Submission',err.message,'warning');
     })
     .addClientIntake(payload);
@@ -4080,10 +4294,9 @@ function deleteClientAccount(email, confirmProjects) {
     return;
   }
   if (!confirmProjects && !confirm('Hapus permanen akun client ' + email + '?\n\nAkses login dicabut dan barisnya dihapus dari sheet ClientUsers.')) return;
-  showLoading();
+  showToast('Menghapus…', 'Sedang menghapus akun ' + email + '.');
   google.script.run
     .withSuccessHandler(function(res) {
-      hideLoading();
       if (res && res.success) {
         showToast('Akun Client Dihapus', buildClientDeleteResultMessage(email, res));
         loadInternalUsers();
@@ -4122,7 +4335,6 @@ function deleteClientAccount(email, confirmProjects) {
       showToast('Gagal Hapus Akun', (res && res.error) || 'Akun client gagal dihapus.', 'warning');
     })
     .withFailureHandler(function(err) {
-      hideLoading();
       showToast('Error', err.message, 'warning');
     })
     .deleteClientUser(getInternalPayKey(), email, { confirmProjects: confirmProjects === true });
@@ -4294,10 +4506,11 @@ function saveUserFromForm() {
     var policy = validatePasswordPolicy(payload.password);
     if (!policy.ok) { showToast('Password Lemah', policy.error, 'warning'); return; }
   }
-  showLoading();
+  var saveBtn = document.querySelector('#view-users .tu-save-btn');
+  setButtonBusy(saveBtn, true, 'Menyimpan…');
   google.script.run
     .withSuccessHandler(function(res) {
-      hideLoading();
+      setButtonBusy(saveBtn, false);
       if (res.success) {
         showToast('User Tersimpan', payload.email + ' berhasil disimpan.');
         resetUserForm();
@@ -4306,7 +4519,10 @@ function saveUserFromForm() {
         showToast('Gagal Simpan User', res.error || 'User tidak bisa disimpan.', 'warning');
       }
     })
-    .withFailureHandler(function(err) { hideLoading(); showToast('Error User', err.message, 'warning'); })
+    .withFailureHandler(function(err) {
+      setButtonBusy(saveBtn, false);
+      showToast('Error User', err.message, 'warning');
+    })
     .saveInternalUser(getInternalPayKey(), payload);
 }
 
@@ -4340,10 +4556,12 @@ function unlockInternalPay() {
   var password = passwordInput ? passwordInput.value : "";
   if (!email) { showToast('Email Kosong','Masukkan email internal terlebih dahulu.','warning'); return; }
   if (!password) { showToast('Password Kosong','Masukkan password internal terlebih dahulu.','warning'); return; }
-  showLoading();
+  var unlockBtn = document.getElementById('internal-pay-unlock-btn')
+    || document.querySelector('#invoice-access-gate .btn-p');
+  setButtonBusy(unlockBtn, true, 'Memverifikasi…');
   google.script.run
     .withSuccessHandler(function(res) {
-      hideLoading();
+      setButtonBusy(unlockBtn, false);
       if (res.success) {
         storeOpsLoginResult(res, email, password);
         _internalPayUnlocked = true;
@@ -4354,7 +4572,10 @@ function unlockInternalPay() {
         showToast('Akses Ditolak', res.error, 'warning');
       }
     })
-    .withFailureHandler(function(err) { hideLoading(); showToast('Error', err.message, 'warning'); })
+    .withFailureHandler(function(err) {
+      setButtonBusy(unlockBtn, false);
+      showToast('Error', err.message, 'warning');
+    })
     .validateInternalLogin(email, password, getLoginRecaptchaToken());
 }
 
@@ -4570,7 +4791,7 @@ function loadPaymentHistory() {
 
 // Tombol Refresh: paksa baca ulang Spreadsheet, bukan sekadar render ulang data di memori.
 function refreshPaymentHistory() {
-  loadOperationData({ source: 'payments', force: true, showLoading: true });
+  loadOperationData({ source: 'payments', force: true, showLoading: false });
 }
 
 function getPayStatusIconSvg(status) {
@@ -5097,6 +5318,7 @@ function closePaymentModal() {
     document.body.style.overflow = '';
   }
   setPayModalSubmitLoading(false);
+  resetPaymentProofUploadState();
 }
 
 function setPayModalSubmitLoading(isLoading) {
@@ -5116,6 +5338,159 @@ function setPayModalSubmitLoading(isLoading) {
   }
 }
 
+/** Wave 4: bukti dikompres + diunggah ke Drive sebelum submit (submit hanya kirim fileId). */
+var PAYMENT_PROOF_UPLOAD = {
+  token: 0,
+  status: 'idle',
+  projectId: '',
+  localName: '',
+  payload: null,
+  remote: null,
+  error: ''
+};
+
+function resetPaymentProofUploadState() {
+  PAYMENT_PROOF_UPLOAD.token += 1;
+  PAYMENT_PROOF_UPLOAD.status = 'idle';
+  PAYMENT_PROOF_UPLOAD.projectId = '';
+  PAYMENT_PROOF_UPLOAD.localName = '';
+  PAYMENT_PROOF_UPLOAD.payload = null;
+  PAYMENT_PROOF_UPLOAD.remote = null;
+  PAYMENT_PROOF_UPLOAD.error = '';
+  var input = document.getElementById('inv-proof-file');
+  if (input) input.value = '';
+  setPaymentProofStatus('');
+}
+
+function setPaymentProofStatus(message, tone) {
+  var el = document.getElementById('inv-proof-status');
+  if (!el) return;
+  el.textContent = message || '';
+  el.style.color = tone === 'error' ? '#c2410c' : (tone === 'ok' ? '#15803d' : '');
+}
+
+function formatProofBytes(bytes) {
+  var n = Number(bytes) || 0;
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(0) + ' KB';
+  return (n / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function onPaymentProofFileChange() {
+  var input = document.getElementById('inv-proof-file');
+  var file = input && input.files && input.files[0] ? input.files[0] : null;
+  PAYMENT_PROOF_UPLOAD.token += 1;
+  var token = PAYMENT_PROOF_UPLOAD.token;
+  PAYMENT_PROOF_UPLOAD.payload = null;
+  PAYMENT_PROOF_UPLOAD.remote = null;
+  PAYMENT_PROOF_UPLOAD.error = '';
+  PAYMENT_PROOF_UPLOAD.localName = file ? file.name : '';
+  if (!file) {
+    PAYMENT_PROOF_UPLOAD.status = 'idle';
+    setPaymentProofStatus('');
+    return;
+  }
+  var check = inspectProofFileClient(file);
+  if (!check.ok) {
+    PAYMENT_PROOF_UPLOAD.status = 'error';
+    PAYMENT_PROOF_UPLOAD.error = check.error;
+    setPaymentProofStatus(check.error, 'error');
+    return;
+  }
+  var projectEl = document.getElementById('inv-project');
+  var projectId = projectEl ? projectEl.value : '';
+  PAYMENT_PROOF_UPLOAD.projectId = projectId || '';
+  PAYMENT_PROOF_UPLOAD.status = 'compressing';
+  setPaymentProofStatus('Menyiapkan bukti…');
+  prepareProofPayload(file, function(payload) {
+    if (token !== PAYMENT_PROOF_UPLOAD.token) return;
+    PAYMENT_PROOF_UPLOAD.payload = payload;
+    if (!projectId) {
+      PAYMENT_PROOF_UPLOAD.status = 'prepared';
+      setPaymentProofStatus('Bukti siap (' + formatProofBytes(payload.bytes) + '). Pilih project untuk mulai upload.');
+      return;
+    }
+    startPaymentProofUpload(token, projectId, payload);
+  }, function(errMsg) {
+    if (token !== PAYMENT_PROOF_UPLOAD.token) return;
+    PAYMENT_PROOF_UPLOAD.status = 'error';
+    PAYMENT_PROOF_UPLOAD.error = errMsg;
+    setPaymentProofStatus(errMsg, 'error');
+  });
+}
+
+function ensurePaymentProofUploadForProject(projectId) {
+  if (!projectId) return;
+  if (!PAYMENT_PROOF_UPLOAD.payload) return;
+  if (PAYMENT_PROOF_UPLOAD.remote && PAYMENT_PROOF_UPLOAD.projectId === projectId && PAYMENT_PROOF_UPLOAD.status === 'ready') return;
+  if (PAYMENT_PROOF_UPLOAD.status === 'uploading' && PAYMENT_PROOF_UPLOAD.projectId === projectId) return;
+  PAYMENT_PROOF_UPLOAD.token += 1;
+  var token = PAYMENT_PROOF_UPLOAD.token;
+  PAYMENT_PROOF_UPLOAD.projectId = projectId;
+  startPaymentProofUpload(token, projectId, PAYMENT_PROOF_UPLOAD.payload);
+}
+
+function startPaymentProofUpload(token, projectId, payload) {
+  PAYMENT_PROOF_UPLOAD.status = 'uploading';
+  PAYMENT_PROOF_UPLOAD.remote = null;
+  setPaymentProofStatus('Mengunggah bukti ke Drive… (' + formatProofBytes(payload.bytes) + ')');
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (token !== PAYMENT_PROOF_UPLOAD.token) return;
+      if (res && res.success && res.proofFileId) {
+        PAYMENT_PROOF_UPLOAD.status = 'ready';
+        PAYMENT_PROOF_UPLOAD.remote = {
+          proofFileId: res.proofFileId,
+          proofUrl: res.proofUrl || '',
+          proofFileName: res.proofFileName || payload.name || 'bukti-transfer'
+        };
+        var note = payload.compressed ? ' · dikompres' : '';
+        setPaymentProofStatus('Bukti siap diunggah' + note + ' · ' + formatProofBytes(res.bytes || payload.bytes), 'ok');
+        return;
+      }
+      PAYMENT_PROOF_UPLOAD.status = 'prepared';
+      PAYMENT_PROOF_UPLOAD.error = (res && res.error) || 'Upload gagal';
+      setPaymentProofStatus('Upload tertunda — akan dikirim saat submit. ' + PAYMENT_PROOF_UPLOAD.error, 'error');
+    })
+    .withFailureHandler(function(err) {
+      if (token !== PAYMENT_PROOF_UPLOAD.token) return;
+      PAYMENT_PROOF_UPLOAD.status = 'prepared';
+      PAYMENT_PROOF_UPLOAD.error = err.message || 'Upload gagal';
+      setPaymentProofStatus('Upload tertunda — akan dikirim saat submit. ' + PAYMENT_PROOF_UPLOAD.error, 'error');
+    })
+    .uploadPaymentProof(getInternalPayKey(), {
+      name: payload.name,
+      mimeType: payload.mimeType,
+      data: payload.data
+    }, { projectId: projectId });
+}
+
+function waitForPaymentProofReady(timeoutMs, onReady, onError) {
+  var started = Date.now();
+  function tick() {
+    if (PAYMENT_PROOF_UPLOAD.status === 'ready' && PAYMENT_PROOF_UPLOAD.remote) {
+      onReady(PAYMENT_PROOF_UPLOAD.remote);
+      return;
+    }
+    if (PAYMENT_PROOF_UPLOAD.status === 'error' && !PAYMENT_PROOF_UPLOAD.payload) {
+      onError(PAYMENT_PROOF_UPLOAD.error || 'Bukti transfer tidak valid.');
+      return;
+    }
+    if (PAYMENT_PROOF_UPLOAD.status === 'prepared' && PAYMENT_PROOF_UPLOAD.payload) {
+      // Eager upload gagal/tertunda → submit pakai base64 terkompres.
+      onReady(null);
+      return;
+    }
+    if (Date.now() - started > timeoutMs) {
+      if (PAYMENT_PROOF_UPLOAD.payload) onReady(null);
+      else onError('Persiapan bukti transfer terlalu lama. Coba lagi.');
+      return;
+    }
+    setTimeout(tick, 200);
+  }
+  tick();
+}
+
 function generateInvoiceForClient() {
   var projectId = document.getElementById('inv-project').value;
   var amount = parseRupiahInput(document.getElementById('inv-amount').value);
@@ -5131,9 +5506,14 @@ function generateInvoiceForClient() {
 
   if (!projectId) { showToast('Pilih Client','Pilih project terlebih dahulu.','warning'); return; }
   if (!amount || amount <= 0) { showToast('Field Kosong','Jumlah pembayaran harus diisi.','warning'); return; }
-  if (!proofFile) { showToast('Lampiran Wajib','Upload bukti transfer terlebih dahulu.','warning'); return; }
-  var proofCheck = inspectProofFileClient(proofFile);
-  if (!proofCheck.ok) { showToast('File Tidak Valid', proofCheck.error, 'warning'); return; }
+  if (!proofFile && !PAYMENT_PROOF_UPLOAD.payload && !PAYMENT_PROOF_UPLOAD.remote) {
+    showToast('Lampiran Wajib','Upload bukti transfer terlebih dahulu.','warning');
+    return;
+  }
+  if (proofFile) {
+    var proofCheck = inspectProofFileClient(proofFile);
+    if (!proofCheck.ok) { showToast('File Tidak Valid', proofCheck.error, 'warning'); return; }
+  }
   if (['PAYMENT AWAL','PAYMENT SETELAH SHOOTING','LUNAS'].indexOf(requestedPaymentStatus) < 0) {
     showToast('Status Invalid','Pilih status payment journey yang valid.','warning');
     return;
@@ -5166,21 +5546,20 @@ function generateInvoiceForClient() {
   if (!confirm(confirmMsg)) return;
 
   setPayModalSubmitLoading(true);
-  showLoading();
-  readProofFile(proofFile, function(proofPayload) {
+
+  function runSubmit(proofFields) {
     google.script.run
       .withSuccessHandler(function(res) {
-        hideLoading();
         setPayModalSubmitLoading(false);
         if (res.success) {
           if (res.pending) {
             showToast('Menunggu Approval', 'Pengajuan '+res.approvalId+' terkirim ('+statusLabel+'). Direktur perlu approve sebelum invoice dikirim ke klien.');
             document.getElementById('inv-amount').value = '';
             document.getElementById('inv-payment-date').value = '';
-            document.getElementById('inv-proof-file').value = '';
             document.getElementById('inv-notes').value = '';
+            resetPaymentProofUploadState();
             applyPendingSubmitLocally(res, projectId, amount, projectTotal, paymentMethod, requestedPaymentStatus);
-            refreshPendingApprovals();
+            kickPaymentSideEffects();
             var formCard = document.querySelector('#view-doc-gen .ops-card:last-of-type') || document.getElementById('invoice-dashboard');
             if (formCard && formCard.scrollIntoView) {
               formCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -5189,11 +5568,15 @@ function generateInvoiceForClient() {
             updateInvoiceBudgetPreview();
             return;
           }
-          showToast('Invoice Terkirim', (res.invoiceNumber || '')+' · Rp '+Number(res.lastAmount).toLocaleString('id-ID')+' · Total Rp '+Number(res.totalPaid).toLocaleString('id-ID'));
+          showToast(
+            res.dispatchPending ? 'Disetujui' : 'Invoice Terkirim',
+            (res.invoiceNumber || '')+' · Rp '+Number(res.lastAmount).toLocaleString('id-ID')
+              + (res.dispatchPending ? ' · PDF dikirim ke klien di latar belakang' : ' · Total Rp '+Number(res.totalPaid).toLocaleString('id-ID'))
+          );
           document.getElementById('inv-amount').value = '';
           document.getElementById('inv-payment-date').value = '';
-          document.getElementById('inv-proof-file').value = '';
           document.getElementById('inv-notes').value = '';
+          resetPaymentProofUploadState();
           applyValidatedPaymentLocally(res, {
             paymentStatus: requestedPaymentStatus,
             paymentMethod: paymentMethod,
@@ -5202,13 +5585,12 @@ function generateInvoiceForClient() {
           syncInvoicePaymentStatusSelect({ forceSuggest: true });
           updateInvoiceBudgetPreview();
           closePaymentModal();
-          refreshPendingApprovals();
+          kickPaymentSideEffects();
         } else {
           showToast('Error', res.error, 'warning');
         }
       })
       .withFailureHandler(function(err) {
-        hideLoading();
         setPayModalSubmitLoading(false);
         showToast('Error', err.message, 'warning');
       })
@@ -5220,14 +5602,167 @@ function generateInvoiceForClient() {
         paymentDate: paymentDate,
         paymentMethod: paymentMethod,
         paymentStatus: requestedPaymentStatus,
-        proofFile: proofPayload,
+        proofFileId: proofFields.proofFileId || '',
+        proofUrl: proofFields.proofUrl || '',
+        proofFileName: proofFields.proofFileName || '',
+        proofFile: proofFields.proofFile || null,
         notes: notes
       });
+  }
+
+  function afterProofReady(remote) {
+    if (remote && remote.proofFileId) {
+      runSubmit({
+        proofFileId: remote.proofFileId,
+        proofUrl: remote.proofUrl || '',
+        proofFileName: remote.proofFileName || ''
+      });
+      return;
+    }
+    var payload = PAYMENT_PROOF_UPLOAD.payload;
+    if (payload && payload.data) {
+      runSubmit({ proofFile: { name: payload.name, mimeType: payload.mimeType, data: payload.data } });
+      return;
+    }
+    if (!proofFile) {
+      setPayModalSubmitLoading(false);
+      showToast('Lampiran Wajib', 'Upload bukti transfer terlebih dahulu.', 'warning');
+      return;
+    }
+    prepareProofPayload(proofFile, function(fresh) {
+      PAYMENT_PROOF_UPLOAD.payload = fresh;
+      runSubmit({ proofFile: { name: fresh.name, mimeType: fresh.mimeType, data: fresh.data } });
+    }, function(errMsg) {
+      setPayModalSubmitLoading(false);
+      showToast('Upload Error', errMsg, 'warning');
+    });
+  }
+
+  ensurePaymentProofUploadForProject(projectId);
+  if (PAYMENT_PROOF_UPLOAD.status === 'ready' && PAYMENT_PROOF_UPLOAD.remote) {
+    afterProofReady(PAYMENT_PROOF_UPLOAD.remote);
+    return;
+  }
+  if (PAYMENT_PROOF_UPLOAD.status === 'compressing' || PAYMENT_PROOF_UPLOAD.status === 'uploading') {
+    waitForPaymentProofReady(45000, afterProofReady, function(errMsg) {
+      setPayModalSubmitLoading(false);
+      showToast('Upload Error', errMsg, 'warning');
+    });
+    return;
+  }
+  if (PAYMENT_PROOF_UPLOAD.payload) {
+    afterProofReady(null);
+    return;
+  }
+  prepareProofPayload(proofFile, function(payload) {
+    PAYMENT_PROOF_UPLOAD.payload = payload;
+    afterProofReady(null);
   }, function(errMsg) {
-    hideLoading();
     setPayModalSubmitLoading(false);
     showToast('Upload Error', errMsg, 'warning');
   });
+}
+
+function prepareProofPayload(file, onSuccess, onError) {
+  var type = String(file.type || '').toLowerCase();
+  var isImage = type.indexOf('image/') === 0 || /\.(png|jpe?g)$/i.test(file.name || '');
+  var isPdf = type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+  if (isPdf || !isImage || file.size <= 350 * 1024) {
+    readProofFile(file, function(payload) {
+      onSuccess({
+        name: payload.name,
+        mimeType: payload.mimeType,
+        data: payload.data,
+        bytes: Math.ceil(String(payload.data || '').length * 3 / 4),
+        compressed: false
+      });
+    }, onError);
+    return;
+  }
+  compressProofImage(file, onSuccess, function(errMsg) {
+    // Fallback: kirim original jika canvas gagal.
+    readProofFile(file, function(payload) {
+      onSuccess({
+        name: payload.name,
+        mimeType: payload.mimeType,
+        data: payload.data,
+        bytes: Math.ceil(String(payload.data || '').length * 3 / 4),
+        compressed: false
+      });
+    }, function() { onError(errMsg); });
+  });
+}
+
+function compressProofImage(file, onSuccess, onError) {
+  var url = '';
+  try { url = URL.createObjectURL(file); } catch (e) {
+    onError('Bukti transfer gagal dibaca untuk kompresi.');
+    return;
+  }
+  var img = new Image();
+  img.onload = function() {
+    try { URL.revokeObjectURL(url); } catch (eRev) {}
+    try {
+      var maxEdge = 1600;
+      var w = img.naturalWidth || img.width || 1;
+      var h = img.naturalHeight || img.height || 1;
+      var scale = Math.min(1, maxEdge / Math.max(w, h));
+      var cw = Math.max(1, Math.round(w * scale));
+      var ch = Math.max(1, Math.round(h * scale));
+      var canvas = document.createElement('canvas');
+      canvas.width = cw;
+      canvas.height = ch;
+      var ctx = canvas.getContext('2d');
+      if (!ctx) {
+        onError('Browser tidak mendukung kompresi gambar.');
+        return;
+      }
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.drawImage(img, 0, 0, cw, ch);
+      var quality = 0.72;
+      var dataUrl = canvas.toDataURL('image/jpeg', quality);
+      var base64 = String(dataUrl).split(',')[1] || '';
+      var bytes = Math.ceil(base64.length * 3 / 4);
+      if (bytes > 1.6 * 1024 * 1024) {
+        dataUrl = canvas.toDataURL('image/jpeg', 0.55);
+        base64 = String(dataUrl).split(',')[1] || '';
+        bytes = Math.ceil(base64.length * 3 / 4);
+      }
+      if (!base64) {
+        onError('Kompresi bukti transfer gagal.');
+        return;
+      }
+      // Jika hasil lebih besar dari original, pakai original.
+      if (bytes >= file.size) {
+        readProofFile(file, function(payload) {
+          onSuccess({
+            name: payload.name,
+            mimeType: payload.mimeType,
+            data: payload.data,
+            bytes: Math.ceil(String(payload.data || '').length * 3 / 4),
+            compressed: false
+          });
+        }, onError);
+        return;
+      }
+      var outName = String(file.name || 'bukti-transfer').replace(/\.(png|jpe?g)$/i, '') + '.jpg';
+      onSuccess({
+        name: outName,
+        mimeType: 'image/jpeg',
+        data: base64,
+        bytes: bytes,
+        compressed: true
+      });
+    } catch (err) {
+      onError(err.message || 'Kompresi bukti transfer gagal.');
+    }
+  };
+  img.onerror = function() {
+    try { URL.revokeObjectURL(url); } catch (eRev2) {}
+    onError('Gambar bukti transfer tidak bisa dibuka.');
+  };
+  img.src = url;
 }
 
 function readProofFile(file, onSuccess, onError) {
@@ -5262,8 +5797,56 @@ function hideToast()  {
   var toast = document.getElementById('toast');
   if (toast) toast.classList.remove('show');
 }
-function showLoading(){ document.getElementById('loading').classList.add('show'); }
-function hideLoading(){ document.getElementById('loading').classList.remove('show'); }
+function showLoading(){
+  var el = document.getElementById('loading');
+  if (el) el.classList.add('show');
+}
+function hideLoading(){
+  var el = document.getElementById('loading');
+  if (el) el.classList.remove('show');
+}
+
+/** Ref-count overlay untuk fetch ops — supaya request yang di-supersede tidak meninggalkan spinner. */
+var OPS_OVERLAY_DEPTH = 0;
+var _opsOverlayWatch = null;
+function beginOpsOverlay_() {
+  OPS_OVERLAY_DEPTH = (OPS_OVERLAY_DEPTH || 0) + 1;
+  if (OPS_OVERLAY_DEPTH === 1) showLoading();
+  clearTimeout(_opsOverlayWatch);
+  _opsOverlayWatch = setTimeout(function() {
+    if (OPS_OVERLAY_DEPTH > 0) {
+      OPS_OVERLAY_DEPTH = 0;
+      hideLoading();
+      try { setOperationDataLoading(false, 'all'); } catch (e) {}
+    }
+  }, 60000);
+}
+function endOpsOverlay_() {
+  if (OPS_OVERLAY_DEPTH > 0) OPS_OVERLAY_DEPTH--;
+  if (OPS_OVERLAY_DEPTH <= 0) {
+    OPS_OVERLAY_DEPTH = 0;
+    clearTimeout(_opsOverlayWatch);
+    _opsOverlayWatch = null;
+    hideLoading();
+  }
+}
+
+/** Inline busy untuk aksi sekunder — jangan pakai overlay penuh. */
+function setButtonBusy(btn, isBusy, label) {
+  if (!btn) return;
+  if (isBusy) {
+    if (!btn.dataset.defaultHtml) btn.dataset.defaultHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.classList.add('is-loading');
+    btn.setAttribute('aria-busy', 'true');
+    if (label) btn.textContent = label;
+    return;
+  }
+  btn.disabled = false;
+  btn.classList.remove('is-loading');
+  btn.removeAttribute('aria-busy');
+  if (btn.dataset.defaultHtml) btn.innerHTML = btn.dataset.defaultHtml;
+}
 function fillViewportHeight(){
   var isMobile = window.innerWidth <= 700;
   var el = document.documentElement, body = document.body;

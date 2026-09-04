@@ -753,6 +753,8 @@ footer{padding:56px 80px 32px;border-top:1px solid var(--hairline);background:va
    Selector di-scope ke .approval-modal .am-actions supaya menang atas .btn-p (gradient ungu). */
 .approval-modal .am-actions .btn-approve,.btn-approve{background:#16a34a;color:#fff;border:1px solid #15803d}
 .approval-modal .am-actions .btn-reject,.btn-reject{background:#dc2626;color:#fff;border:1px solid #b91c1c}
+.approval-modal-backdrop.is-busy{cursor:wait}
+.approval-modal.is-busy .am-actions button{opacity:.72;cursor:wait;pointer-events:none}
 .approval-modal .am-actions .btn-approve:hover,.btn-approve:hover{background:#15803d;opacity:1}
 .approval-modal .am-actions .btn-reject:hover,.btn-reject:hover{background:#b91c1c;opacity:1}
 .approval-modal .am-actions .btn-approve{background:#16a34a;color:#fff}
@@ -4833,6 +4835,16 @@ body.public-site #faq-contact{
   animation: glassEnter .55s cubic-bezier(.22,1,.36,1) both;
   animation-delay: var(--enter-delay,0s);
 }
+/* Saat parent sempat display:none (login gate), animasi tidak jalan → opacity 0 abadi. */
+#ops.ops-shell-open .glass-enter,
+#ops-client-access-panel.active .glass-enter{
+  opacity:1;
+}
+#ops.ops-shell-open.ops-shell-reveal .glass-enter,
+#ops-client-access-panel.active.ops-shell-reveal .glass-enter{
+  animation: glassEnter .55s cubic-bezier(.22,1,.36,1) both;
+  animation-delay: var(--enter-delay,0s);
+}
 
 @keyframes opsReveal{
   from{opacity:0;transform:translateY(12px)}
@@ -4847,6 +4859,12 @@ body.public-site #faq-contact{
   opacity:0;
   animation:opsReveal .42s cubic-bezier(.22,1,.36,1) both;
   animation-delay:var(--enter-delay,0s);
+}
+#ops.ops-shell-open .pd-enter,
+#ops.ops-shell-open .chart-enter,
+#ops-client-access-panel.active .pd-enter,
+#ops-client-access-panel.active .chart-enter{
+  opacity:1;
 }
 #view-internal-db #project-detail-card.project-detail.pd-animate-in{
   animation:pdShellReveal .5s cubic-bezier(.22,1,.36,1) both;
@@ -7315,6 +7333,23 @@ body > .pay-modal-overlay .pay-modal .pay-modal-submit.is-loading::before,
   animation:paySubmitSpin .7s linear infinite;
 }
 @keyframes paySubmitSpin{to{transform:rotate(360deg)}}
+.btn-submit.is-loading,
+.btn-p.is-loading,
+.btn-otp.is-loading,
+#view-users .tu-save-btn.is-loading{
+  opacity:.88;cursor:wait;pointer-events:none;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+}
+.btn-submit.is-loading::before,
+.btn-p.is-loading::before,
+.btn-otp.is-loading::before,
+#view-users .tu-save-btn.is-loading::before{
+  content:"";
+  width:14px;height:14px;flex-shrink:0;
+  border:2px solid rgba(255,255,255,0.35);
+  border-top-color:#fff;border-radius:50%;
+  animation:paySubmitSpin .7s linear infinite;
+}
 body > .pay-modal-overlay .pay-modal .pay-modal-submit:disabled,
 #view-doc-gen .pay-modal .pay-modal-submit:disabled{
   opacity:.88;cursor:wait;

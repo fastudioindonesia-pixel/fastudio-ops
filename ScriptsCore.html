@@ -72,7 +72,83 @@ var _opsInternalRole = "";
 var _opsInternalCredential = "";
 var _internalPayUnlocked = false;
 var OPS_SESSION_KEY = "fa_ops_session_v1";
+var OPS_SESSION_RESTORE_GEN = 0;
 var CLIENT_PORTAL_SESSION_KEY = "fa_client_portal_session_v1";
+
+/** Shared HTML helpers — must live in ScriptsCore (IndexAuth does not include ScriptsBooking). */
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, function(ch) {
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch];
+  });
+}
+function escapeJs(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/</g, '\\x3c')
+    .replace(/>/g, '\\x3e')
+    .replace(/[\r\n]/g, ' ');
+}
+function escapeAttr(value) {
+  return escapeHtml(value);
+}
+function safeExternalUrl(value) {
+  var url = String(value || '').trim();
+  return /^https:\/\/(drive|docs)\.google\.com\//.test(url) ? escapeHtml(url) : '';
+}
+var WEAK_PASSWORDS = {
+  password: 1, password1: 1, password123: 1, passw0rd: 1,
+  '12345678': 1, '123456789': 1, '1234567890': 1, qwerty12: 1,
+  qwerty123: 1, admin123: 1, welcome1: 1, letmein1: 1,
+  fastudio: 1, fastudio1: 1, fastudio123: 1, changeme: 1,
+  indonesia: 1, indonesia1: 1
+};
+function validatePasswordPolicy(password) {
+  password = String(password || '');
+  if (!password) return { ok: false, error: 'Password wajib diisi.' };
+  if (password.length < 8) return { ok: false, error: 'Password minimal 8 karakter, berisi huruf, angka, dan simbol.' };
+  if (password.length > 128) return { ok: false, error: 'Password maksimal 128 karakter.' };
+  if (/\s/.test(password)) return { ok: false, error: 'Password tidak boleh mengandung spasi.' };
+  if (!/[A-Za-z]/.test(password)) return { ok: false, error: 'Password harus berisi huruf.' };
+  if (!/[0-9]/.test(password)) return { ok: false, error: 'Password harus berisi angka.' };
+  if (!/[^A-Za-z0-9]/.test(password)) return { ok: false, error: 'Password harus berisi simbol (contoh: @ # ! %).' };
+  if (WEAK_PASSWORDS[password.toLowerCase()]) return { ok: false, error: 'Password terlalu umum. Pilih kombinasi yang lebih unik.' };
+  if (/^(.)\1+$/.test(password)) return { ok: false, error: 'Password tidak boleh karakter yang diulang saja.' };
+  return { ok: true };
+}
+function inspectProofFileClient(file) {
+  if (!file) return { ok: false, error: 'Upload bukti transfer terlebih dahulu.' };
+  if (file.size > 8 * 1024 * 1024) return { ok: false, error: 'Maksimal ukuran bukti transfer 8MB.' };
+  var name = String(file.name || '');
+  if (!name) return { ok: false, error: 'Nama file bukti transfer kosong.' };
+  if (/[\\/]/.test(name) || name.indexOf('..') >= 0) return { ok: false, error: 'Nama file bukti transfer tidak valid.' };
+  if (name.length > 120) return { ok: false, error: 'Nama file bukti transfer terlalu panjang.' };
+  var lowered = name.toLowerCase();
+  if (/\.(php|exe|js|html|htm|svg|xml|sh|bat|cmd|scr)(\.|$)/.test(lowered)) {
+    return { ok: false, error: 'Nama file mengandung ekstensi yang tidak diizinkan.' };
+  }
+  var extMatch = lowered.match(/\.([a-z0-9]+)$/);
+  var ext = extMatch ? extMatch[1] : '';
+  if (ext !== 'pdf' && ext !== 'png' && ext !== 'jpg' && ext !== 'jpeg') {
+    return { ok: false, error: 'Format bukti transfer tidak valid. Gunakan PDF, JPG, atau PNG.' };
+  }
+  var type = String(file.type || '').toLowerCase();
+  var allowedType = !type
+    || type === 'application/pdf'
+    || type === 'image/png'
+    || type === 'image/jpeg'
+    || type === 'image/jpg';
+  if (!allowedType) {
+    return { ok: false, error: 'Format bukti transfer tidak valid. Gunakan PDF, JPG, atau PNG.' };
+  }
+  if ((type === 'application/pdf' && ext !== 'pdf')
+      || (type === 'image/png' && ext !== 'png')
+      || ((type === 'image/jpeg' || type === 'image/jpg') && ext !== 'jpg' && ext !== 'jpeg')) {
+    return { ok: false, error: 'Ekstensi file tidak sesuai tipenya.' };
+  }
+  return { ok: true };
+}
 
 function persistOpsSession() {
   if (!_opsInternalCredential) return;
@@ -99,9 +175,14 @@ function restoreOpsSession() {
       clearOpsSession();
       return;
     }
+    var restoreGen = OPS_SESSION_RESTORE_GEN;
     google.script.run
       .withSuccessHandler(function(res) {
+        // Login baru sudah jalan — abaikan hasil restore lama.
+        if (restoreGen !== OPS_SESSION_RESTORE_GEN) return;
+        if (_opsUnlocked && _opsInternalCredential && _opsInternalCredential !== raw) return;
         if (!res || !res.success) {
+          if (_opsUnlocked) return;
           clearOpsSession();
           return;
         }
@@ -111,7 +192,11 @@ function restoreOpsSession() {
         _opsInternalRole = res.role || 'OFFICER';
         if (typeof applyRestoredLogin === 'function') applyRestoredLogin(res);
       })
-      .withFailureHandler(function() { clearOpsSession(); })
+      .withFailureHandler(function() {
+        if (restoreGen !== OPS_SESSION_RESTORE_GEN) return;
+        if (_opsUnlocked) return;
+        clearOpsSession();
+      })
       .validateInternalSession(raw);
   } catch (e) {
     clearOpsSession();
@@ -132,6 +217,8 @@ function clearClientPortalSession() {
 }
 
 function storeOpsLoginResult(res, email) {
+  // Batalkan restoreOpsSession yang masih in-flight supaya tidak menimpa login baru.
+  if (typeof OPS_SESSION_RESTORE_GEN === 'number') OPS_SESSION_RESTORE_GEN++;
   _opsInternalEmail = res.email || email;
   _opsInternalName = res.name || _opsInternalEmail;
   _opsInternalRole = res.role || 'OFFICER';
@@ -1834,6 +1921,41 @@ function isAuthenticatedSession() {
   return false;
 }
 
+/** Judul tab browser per peran (juga sync ke parent Vercel iframe gate). */
+function syncDocumentTitleForSession_() {
+  var title = 'Sign In - FA Studio Indonesia';
+  try {
+    var pageId = typeof getActivePageId === 'function' ? getActivePageId() : '';
+    if (pageId === 'reset-password') {
+      title = 'Reset Password - FA Studio Indonesia';
+    } else {
+      var role = String(typeof _opsInternalRole !== 'undefined' ? _opsInternalRole : '').trim().toUpperCase();
+      var loggedIn = !!(typeof _opsInternalCredential !== 'undefined' && _opsInternalCredential);
+      if (loggedIn && role) {
+        if (role === 'CLIENT') {
+          title = 'Portal Client - FA Studio Indonesia';
+        } else if (
+          role === 'MARKETING' ||
+          role === 'SOUND_MAN' ||
+          role === 'EDITOR' ||
+          role === 'FINAL_VIDEO'
+        ) {
+          title = 'Production - FA Studio Indonesia';
+        } else {
+          // DIRECTOR, OFFICER, INTERNAL, dll.
+          title = 'Operation System - FA Studio Indonesia';
+        }
+      }
+    }
+  } catch (e) {}
+  try { document.title = title; } catch (e2) {}
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'fa-studio-title', title: title }, '*');
+    }
+  } catch (e3) {}
+}
+
 /** Sembunyikan navigasi publik saat user sudah login — keluar hanya lewat logout. */
 function applyPublicNavGate() {
   var authed = isAuthenticatedSession();
@@ -1843,6 +1965,7 @@ function applyPublicNavGate() {
     var page = typeof getActivePageId === 'function' ? getActivePageId() : 'home';
     updateLgFooterLinks_(page || 'home');
   }
+  if (typeof syncDocumentTitleForSession_ === 'function') syncDocumentTitleForSession_();
 }
 
 function goPublicHome() {
@@ -1969,9 +2092,15 @@ function setView(v, skipLoad) {
   }
   document.querySelectorAll('.ops-view').forEach(function(el){el.classList.remove('active')});
   document.querySelectorAll('.sb-item').forEach(function(el){el.classList.remove('active')});
-  document.getElementById('view-'+v).classList.add('active');
+  var viewEl = document.getElementById('view-'+v);
+  if (!viewEl) {
+    v = 'analytics';
+    viewEl = document.getElementById('view-analytics');
+  }
+  if (viewEl) viewEl.classList.add('active');
   var sb = document.getElementById('sb-'+v); if(sb) sb.classList.add('active');
-  document.getElementById('ops-title').textContent = OPS_TITLES[v];
+  var titleEl = document.getElementById('ops-title');
+  if (titleEl) titleEl.textContent = OPS_TITLES[v] || v;
   var subEl = document.getElementById('ops-subtitle');
   if (subEl) subEl.textContent = OPS_SUBTITLES[v] || '';
   var statsPill = document.getElementById('ops-stats-pill');

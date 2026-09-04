@@ -5,11 +5,11 @@
 | Zone | Host | Isi |
 |------|------|-----|
 | Marketing | Vercel (`fastudio.id`) | Home, Work, Services, About |
-| Login gate | Vercel (`/signin`) | Halaman login di domain FA Studio |
+| Login gate | Vercel (`/user`) | Halaman login di domain FA Studio |
 | System | GAS (di balik gate) | Sign In/Up, client portal, internal ops / bispro |
 
 Setelah lewat gate login, seluruh dashboard client dan internal system di-handle GAS.
-URL browser tetap di `fastudio.id/signin` (shell Vercel + iframe GAS).
+URL browser tetap di `fastudio.id/user` (shell Vercel + iframe GAS).
 
 ## Customize dari repo
 
@@ -26,9 +26,9 @@ URL browser tetap di `fastudio.id/signin` (shell Vercel + iframe GAS).
 | Path | Isi |
 |------|-----|
 | `/` | Home · Work · Services · About (+ mobile nav) |
-| `/signin` | **Login gate** → GAS auth + post-login system (`signin.html`, clean URL) |
-| `/app` | Alias file `app.html` (same gate) |
-| `/ops`, `/booking` | Rewrite → `/signin` |
+| `/user` | **Login / portal / ops gate** → GAS (`user.html`, clean URL) |
+| `/signin` | Redirect permanen → `/user` |
+| `/app`, `/ops`, `/booking` | Rewrite → `/user` |
 
 ## Deploy
 

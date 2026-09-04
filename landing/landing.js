@@ -1325,7 +1325,7 @@ function initFaqAccordion() {
 
 /* Bridge:
  * Vercel = Home / Work / Services / About (marketing)
- * /signin = login gate on Vercel → GAS handles Sign In + client portal + internal ops
+ * /user = login gate on Vercel → GAS handles Sign In + client portal + internal ops
  */
 function gasAppUrl_(page) {
   var base = (window.GAS_APP_URL || '').replace(/\/$/, '');
@@ -1337,13 +1337,13 @@ function gasAppUrl_(page) {
   return base + '?page=' + encodeURIComponent(page);
 }
 
-/** Canonical login gate on Vercel. Aliases /app /ops /booking also work via vercel.json. */
+/** Canonical login gate on Vercel. Aliases /signin /app /ops /booking also work. */
 function localSignInPath_(page) {
   var p = String(page || 'ops').trim().toLowerCase();
-  if (p === 'booking' || p === 'login' || p === 'signin' || p === 'create') p = 'ops';
+  if (p === 'booking' || p === 'login' || p === 'signin' || p === 'user' || p === 'create') p = 'ops';
   if (p !== 'ops' && p !== 'reset-password') p = 'ops';
-  if (p === 'ops') return '/signin';
-  return '/signin?page=' + encodeURIComponent(p);
+  if (p === 'ops') return '/user';
+  return '/user?page=' + encodeURIComponent(p);
 }
 
 function warmGasApp_() {
@@ -1354,7 +1354,7 @@ function warmGasApp_() {
     fetch(warm, { mode: 'no-cors', credentials: 'omit', keepalive: true });
   } catch (e1) {}
   try {
-    fetch('/signin', { credentials: 'omit', cache: 'force-cache', keepalive: true });
+    fetch('/user', { credentials: 'omit', cache: 'force-cache', keepalive: true });
   } catch (e3) {}
 }
 
@@ -1388,8 +1388,8 @@ function openStartProject() {
 
 function setPage(page) {
   if (page === 'faq-contact') page = 'about';
-  if (page === 'booking' || page === 'ops' || page === 'reset-password' || page === 'signin' || page === 'login') {
-    goToGasApp(page === 'booking' || page === 'signin' || page === 'login' ? 'ops' : page);
+  if (page === 'booking' || page === 'ops' || page === 'reset-password' || page === 'signin' || page === 'login' || page === 'user') {
+    goToGasApp(page === 'booking' || page === 'signin' || page === 'login' || page === 'user' ? 'ops' : page);
     return;
   }
 
@@ -1445,8 +1445,8 @@ document.addEventListener('DOMContentLoaded', function() {
     var q = String(params.get('page') || '').trim().toLowerCase();
     if (q === 'faq-contact') q = 'about';
     if (q === 'gallery' || q === 'about' || q === 'home') initial = q;
-    if (q === 'ops' || q === 'booking' || q === 'reset-password' || q === 'signin' || q === 'login') {
-      goToGasApp(q === 'booking' || q === 'signin' || q === 'login' ? 'ops' : q);
+    if (q === 'ops' || q === 'booking' || q === 'reset-password' || q === 'signin' || q === 'login' || q === 'user') {
+      goToGasApp(q === 'booking' || q === 'signin' || q === 'login' || q === 'user' ? 'ops' : q);
       return;
     }
   } catch (e2) {}

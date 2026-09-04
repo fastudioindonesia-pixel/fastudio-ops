@@ -51,10 +51,12 @@ function sendClientPortalOtpRequest() {
     setClientPortalStatus('Project ID dan email booking wajib diisi.', false);
     return;
   }
-  showLoading();
+  var sendBtn = document.querySelector('[onclick*="sendClientPortalOtpRequest"]');
+  if (typeof setButtonBusy === 'function') setButtonBusy(sendBtn, true, 'Mengirim…');
+  setClientPortalStatus('Mengirim OTP…', true);
   google.script.run
     .withSuccessHandler(function(res) {
-      hideLoading();
+      if (typeof setButtonBusy === 'function') setButtonBusy(sendBtn, false);
       if (res.success) {
         CLIENT_PORTAL_STATE.otpSent = true;
         setClientPortalStatus('OTP tracking dikirim ke '+email+'. Cek inbox atau spam.', true);
@@ -64,7 +66,7 @@ function sendClientPortalOtpRequest() {
       }
     })
     .withFailureHandler(function(err) {
-      hideLoading();
+      if (typeof setButtonBusy === 'function') setButtonBusy(sendBtn, false);
       setClientPortalStatus(err.message, false);
     })
     .sendClientPortalOtp(projectId, email);
@@ -82,10 +84,12 @@ function verifyClientPortalOtpSubmit() {
     setClientPortalStatus('Project ID, email, dan OTP wajib diisi.', false);
     return;
   }
-  showLoading();
+  var verifyBtn = document.querySelector('[onclick*="verifyClientPortalOtpSubmit"]');
+  if (typeof setButtonBusy === 'function') setButtonBusy(verifyBtn, true, 'Memverifikasi…');
+  setClientPortalStatus('Memverifikasi OTP…', true);
   google.script.run
     .withSuccessHandler(function(res) {
-      hideLoading();
+      if (typeof setButtonBusy === 'function') setButtonBusy(verifyBtn, false);
       if (res.success) {
         CLIENT_PORTAL_STATE.email = email;
         CLIENT_PORTAL_STATE.sessionToken = res.sessionToken || "";
@@ -98,7 +102,7 @@ function verifyClientPortalOtpSubmit() {
       }
     })
     .withFailureHandler(function(err) {
-      hideLoading();
+      if (typeof setButtonBusy === 'function') setButtonBusy(verifyBtn, false);
       setClientPortalStatus(err.message, false);
     })
     .verifyClientPortalOtp(projectId, email, otp);
@@ -999,7 +1003,7 @@ function getProductionOpsLeadPool() {
 
 function initProductionOpsView() {
   var picOnly = typeof isDeptPicUser === 'function' && isDeptPicUser();
-  ensureOperationData({ source: 'leads', showLoading: true, productionOpsOnly: picOnly }, function() {
+  ensureOperationData({ source: 'leads', productionOpsOnly: picOnly }, function() {
     syncProductionOpsFoldersForActiveProject(function() {
       renderProductionOpsView();
     });
@@ -1359,10 +1363,8 @@ function saveProductionOpsDepartment(projectId, departmentId) {
   });
 
   PRODUCTION_OPS_SAVING_ID = projectId + ':' + departmentId;
-  showLoading();
   google.script.run
     .withSuccessHandler(function(res) {
-      hideLoading();
       PRODUCTION_OPS_SAVING_ID = '';
       if (res && res.success) {
         lead.productionOpsData = JSON.stringify(res.opsData || items);
@@ -1379,9 +1381,20 @@ function saveProductionOpsDepartment(projectId, departmentId) {
         }
         delete PROJECT_TIMELINES[projectId];
         PRODUCTION_OPS_EDITING_ID = '';
+        if (res.needsDirectorValidation && res.pendingDeptApproval && typeof PENDING_APPROVALS !== 'undefined') {
+          var pending = Object.assign({ type: 'DEPT', status: 'PENDING' }, res.pendingDeptApproval);
+          PENDING_APPROVALS = (PENDING_APPROVALS || []).filter(function(a) {
+            return a.approvalId !== pending.approvalId;
+          });
+          PENDING_APPROVALS.unshift(pending);
+          if (typeof buildLocalOpsNotifications === 'function') {
+            OPS_NOTIFICATIONS = buildLocalOpsNotifications();
+          }
+          if (typeof renderApprovalBell === 'function') renderApprovalBell();
+          if (typeof persistCurrentOpsDataCache === 'function') persistCurrentOpsDataCache();
+        }
         renderProductionOpsView();
         if (projectDetailId && sameProjectIdClient(projectId, projectDetailId)) renderProjectDetail(projectDetailId, true);
-        if (typeof isDeptPicUser !== 'function' || !isDeptPicUser()) refreshPendingApprovals();
         var mailNote = res.notification && res.notification.sent
           ? ' Email client dikirim karena stage berubah.'
           : ((res.notification && res.notification.reason) ? ' ' + res.notification.reason : '');
@@ -1396,7 +1409,6 @@ function saveProductionOpsDepartment(projectId, departmentId) {
       }
     })
     .withFailureHandler(function(err) {
-      hideLoading();
       PRODUCTION_OPS_SAVING_ID = '';
       renderProductionOpsView();
       showToast('Error', (err && err.message) || 'Gagal menghubungi server. Coba lagi atau refresh halaman.', 'warning');

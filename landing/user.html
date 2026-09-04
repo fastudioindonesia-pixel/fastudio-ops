@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Sign In — FA Studio Indonesia</title>
+<title>Sign In - FA Studio Indonesia</title>
 <meta name="description" content="Sign in to FA Studio Indonesia. Login gate for client portal and internal ops."/>
 <link rel="icon" href="assets/fa-app-icon.png" type="image/png" sizes="512x512"/>
 <link rel="apple-touch-icon" href="assets/fa-app-icon.png" sizes="180x180"/>
@@ -79,7 +79,7 @@
   var params = new URLSearchParams(window.location.search || '');
   var page = String(params.get('page') || 'ops').trim().toLowerCase();
   if (page === 'faq-contact') page = 'about';
-  if (page === 'booking' || page === 'login' || page === 'signin' || page === 'create') page = 'ops';
+  if (page === 'booking' || page === 'login' || page === 'signin' || page === 'user' || page === 'create') page = 'ops';
   if (page !== 'ops' && page !== 'reset-password') page = 'ops';
 
   var base = String(window.GAS_APP_URL || '').replace(/\/$/, '');
@@ -117,8 +117,26 @@
   }, 20000);
 
   try {
-    document.title = (page === 'reset-password' ? 'Reset Password' : 'Sign In') + ' — FA Studio Indonesia';
+    document.title = (page === 'reset-password' ? 'Reset Password' : 'Sign In') + ' - FA Studio Indonesia';
   } catch (e) {}
+
+  // GAS iframe mem-post title per peran setelah login / logout.
+  window.addEventListener('message', function (ev) {
+    try {
+      var origin = String(ev.origin || '');
+      if (
+        origin.indexOf('script.google.com') < 0 &&
+        origin.indexOf('googleusercontent.com') < 0
+      ) {
+        return;
+      }
+      var data = ev.data;
+      if (!data || data.type !== 'fa-studio-title' || typeof data.title !== 'string') return;
+      var next = String(data.title || '').trim();
+      if (!next) return;
+      document.title = next;
+    } catch (err) {}
+  });
 })();
   </script>
 </body>

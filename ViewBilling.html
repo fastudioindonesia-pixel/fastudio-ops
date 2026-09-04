@@ -8,7 +8,7 @@
           <div class="fg" style="max-width:320px;margin:0 auto 16px">
             <input type="password" class="fc" id="internal-password-input" placeholder="Password"/>
           </div>
-          <button class="btn-p" onclick="unlockInternalPay()">Masuk</button>
+          <button class="btn-p" id="internal-pay-unlock-btn" onclick="unlockInternalPay()">Masuk</button>
         </div>
         <div id="invoice-dashboard" class="bi-layout" style="display:none">
           <select id="pay-filter-status" class="bi-filter-hidden" aria-hidden="true" tabindex="-1" onchange="renderPaymentHistory()">
@@ -64,7 +64,7 @@
               </div>
               <div class="pay-modal-body">
                 <p class="pay-modal-lead">Upload bukti transfer yang sudah dicek Officer. Pengajuan masuk antrean Direktur — invoice &amp; email klien baru dikirim setelah di-approve.</p>
-                <div class="fg"><label>Pilih Client / Project</label><select class="fc" id="inv-project" onchange="syncInvoiceProjectBudget()"></select></div>
+                <div class="fg"><label>Pilih Client / Project</label><select class="fc" id="inv-project" onchange="syncInvoiceProjectBudget();ensurePaymentProofUploadForProject(this.value)"></select></div>
                 <div class="fg"><label>Total Harga Project (Rp)</label><input type="text" class="fc" id="inv-project-total" placeholder="10.000.000" inputmode="numeric" oninput="formatRupiahField(this)"/><div class="lead-ts">Otomatis terisi dari total kesepakatan booking jika sudah ada. Bisa disesuaikan bila perlu.</div></div>
                 <div class="fg"><label>Jumlah Pembayaran Kali Ini (Rp)</label><input type="text" class="fc" id="inv-amount" placeholder="1.500.000" inputmode="numeric" oninput="formatRupiahField(this)"/></div>
                 <div class="fg"><label>Status Payment (Journey)</label>
@@ -82,7 +82,7 @@
                     <option>Transfer BCA</option><option>Transfer Mandiri</option><option>Transfer BNI</option><option>QRIS</option><option>Lainnya</option>
                   </select>
                 </div>
-                <div class="fg"><label>Lampiran Bukti Transfer (PDF/JPG/PNG, maks. 8MB)</label><input type="file" class="fc" id="inv-proof-file" accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg"/></div>
+                <div class="fg"><label>Lampiran Bukti Transfer (PDF/JPG/PNG, maks. 8MB)</label><input type="file" class="fc" id="inv-proof-file" accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg" onchange="onPaymentProofFileChange()"/><div class="lead-ts" id="inv-proof-status" style="margin-top:6px"></div></div>
                 <div class="fg"><label>Catatan Internal (opsional)</label><textarea class="fc" id="inv-notes" placeholder="Catatan verifikasi..." rows="3"></textarea></div>
                 <button type="button" class="btn-p pay-modal-submit" id="pay-modal-submit-btn" onclick="generateInvoiceForClient()">Submit Pembayaran</button>
               </div>
